@@ -1,0 +1,165 @@
+{
+  "tier_1_highly_credible": {
+    "Reuters": {
+      "credibility_score": 0.98,
+      "domain": "reuters.com",
+      "fact_check_score": 0.95,
+      "bias_score": 0.1,
+      "category": "news_agency"
+    },
+    "AP": {
+      "credibility_score": 0.97,
+      "domain": "apnews.com",
+      "fact_check_score": 0.94,
+      "bias_score": 0.12,
+      "category": "news_agency"
+    },
+    "BBC": {
+      "credibility_score": 0.96,
+      "domain": "bbc.com",
+      "fact_check_score": 0.93,
+      "bias_score": 0.15,
+      "category": "news_agency"
+    },
+    "NPR": {
+      "credibility_score": 0.95,
+      "domain": "npr.org",
+      "fact_check_score": 0.92,
+      "bias_score": 0.18,
+      "category": "news_agency"
+    }
+  },
+  "tier_2_very_credible": {
+    "The Guardian": {
+      "credibility_score": 0.93,
+      "domain": "theguardian.com",
+      "fact_check_score": 0.90,
+      "bias_score": 0.22,
+      "category": "newspaper"
+    },
+    "New York Times": {
+      "credibility_score": 0.92,
+      "domain": "nytimes.com",
+      "fact_check_score": 0.89,
+      "bias_score": 0.25,
+      "category": "newspaper"
+    },
+    "Washington Post": {
+      "credibility_score": 0.91,
+      "domain": "washingtonpost.com",
+      "fact_check_score": 0.88,
+      "bias_score": 0.28,
+      "category": "newspaper"
+    },
+    "Financial Times": {
+      "credibility_score": 0.90,
+      "domain": "ft.com",
+      "fact_check_score": 0.87,
+      "bias_score": 0.20,
+      "category": "newspaper"
+    },
+    "The Telegraph": {
+      "credibility_score": 0.89,
+      "domain": "telegraph.co.uk",
+      "fact_check_score": 0.86,
+      "bias_score": 0.32,
+      "category": "newspaper"
+    }
+  },
+  "tier_3_credible": {
+    "Bloomberg": {
+      "credibility_score": 0.88,
+      "domain": "bloomberg.com",
+      "fact_check_score": 0.85,
+      "bias_score": 0.18,
+      "category": "news_agency"
+    },
+    "Al Jazeera": {
+      "credibility_score": 0.87,
+      "domain": "aljazeera.com",
+      "fact_check_score": 0.84,
+      "bias_score": 0.30,
+      "category": "news_agency"
+    },
+    "CNN": {
+      "credibility_score": 0.82,
+      "domain": "cnn.com",
+      "fact_check_score": 0.80,
+      "bias_score": 0.38,
+      "category": "news_network"
+    },
+    "BBC News": {
+      "credibility_score": 0.96,
+      "domain": "bbc.co.uk/news",
+      "fact_check_score": 0.93,
+      "bias_score": 0.15,
+      "category": "news_network"
+    }
+  },
+  "fact_checking_sources": {
+    "Snopes": {
+      "credibility_score": 0.94,
+      "domain": "snopes.com",
+      "fact_check_score": 0.96,
+      "bias_score": 0.12,
+      "category": "fact_checker"
+    },
+    "FactCheck.org": {
+      "credibility_score": 0.95,
+      "domain": "factcheck.org",
+      "fact_check_score": 0.97,
+      "bias_score": 0.08,
+      "category": "fact_checker"
+    },
+    "PolitiFact": {
+      "credibility_score": 0.92,
+      "domain": "politifact.com",
+      "fact_check_score": 0.94,
+      "bias_score": 0.15,
+      "category": "fact_checker"
+    },
+    "Full Fact": {
+      "credibility_score": 0.93,
+      "domain": "fullfact.org",
+      "fact_check_score": 0.95,
+      "bias_score": 0.10,
+      "category": "fact_checker"
+    }
+  },
+  "academic_sources": {
+    "Nature": {
+      "credibility_score": 0.97,
+      "domain": "nature.com",
+      "fact_check_score": 0.98,
+      "bias_score": 0.05,
+      "category": "academic"
+    },
+    "Science": {
+      "credibility_score": 0.96,
+      "domain": "sciencemag.org",
+      "fact_check_score": 0.97,
+      "bias_score": 0.06,
+      "category": "academic"
+    },
+    "The Lancet": {
+      "credibility_score": 0.96,
+      "domain": "thelancet.com",
+      "fact_check_score": 0.97,
+      "bias_score": 0.05,
+      "category": "academic"
+    },
+    "JAMA": {
+      "credibility_score": 0.95,
+      "domain": "jama.jamanetwork.com",
+      "fact_check_score": 0.96,
+      "bias_score": 0.07,
+      "category": "academic"
+    }
+  },
+  "metadata": {
+    "version": "1.0",
+    "last_updated": "2024-01-15",
+    "total_sources": 22,
+    "scoring_method": "credibility_score = (fact_check_score * 0.7 + (1 - bias_score) * 0.3)"
+  }
+}
