@@ -1,7 +1,5 @@
 # TruthLens AI - Production-Grade Misinformation Detection System
 
-**An MSc-level AI system combining RoBERTa NLP, Sentence-BERT semantic search, and graph-based propagation analysis.**
-
 ---
 
 ## 🎯 System Overview
@@ -369,31 +367,4 @@ pytest tests/ -v --cov=backend
 - ✅ Environment variable secrets
 - ✅ SQL injection prevention (SQLAlchemy ORM)
 
----
 
-## 📝 License
-
-MIT License
-
----
-
-## 👥 Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
-
----
-
-## 📞 Support
-
-For issues, questions, or contributions:
-- 📧 Email: support@truthlens-ai.com
-- 🐛 Issues: GitHub Issues
-- 💬 Discussions: GitHub Discussions
-
----
-
-**Built for MSc Data Science students and AI enthusiasts. 🚀**
