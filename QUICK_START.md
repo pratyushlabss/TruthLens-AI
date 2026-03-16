@@ -58,9 +58,9 @@ curl -X POST http://localhost:5000/api/analyze \
 
 ## 🔑 Credentials (Already Configured)
 
-- ✅ HF_TOKEN: `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`
-- ✅ PINECONE_KEY: `pcsk_4GpH3o_LT2E8HvMKk1n2eR3ZAbFqiFD3xS5TxxMcDYujatBNZvcMYpvzrZP3dGj9qeHj9p`
-- ✅ SCRAPER_KEY: `eb66d83d-416a-4f5e-8c7c-d5c2b6f89541`
+- ✅ HF_TOKEN: `your_hugging_face_token_here`
+- ✅ PINECONE_KEY: `your_pinecone_key_here`
+- ✅ SCRAPER_KEY: `your_scraper_key_here`
 
 ---
 
