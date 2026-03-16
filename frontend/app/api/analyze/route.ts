@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// PRODUCTION API KEYS
-const HF_TOKEN = "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";
-const PINECONE_KEY = "pcsk_4GpH3o_LT2E8HvMKk1n2eR3ZAbFqiFD3xS5TxxMcDYujatBNZvcMYpvzrZP3dGj9qeHj9p";
-const SCRAPER_KEY = "eb66d83d-416a-4f5e-8c7c-d5c2b6f89541";
+// PRODUCTION API KEYS - Load from environment variables
+const HF_TOKEN = process.env.HF_TOKEN;
+const PINECONE_KEY = process.env.PINECONE_KEY;
+const SCRAPER_KEY = process.env.SCRAPER_KEY;
 
 export async function POST(req: NextRequest) {
   try {

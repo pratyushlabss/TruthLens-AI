@@ -8,7 +8,7 @@ import requests
 import json
 from typing import Dict, List, Any
 
-HF_TOKEN = os.getenv('HF_TOKEN', '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')
+HF_TOKEN = os.getenv('HF_TOKEN')
 HF_API_URL = 'https://api-inference.huggingface.co/models'
 
 def analyze_with_nlp(text: str) -> Dict[str, Any]:

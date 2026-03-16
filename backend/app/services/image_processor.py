@@ -8,7 +8,7 @@ import requests
 from typing import Optional
 from werkzeug.datastructures import FileStorage
 
-HF_TOKEN = os.getenv('HF_TOKEN', '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')
+HF_TOKEN = os.getenv('HF_TOKEN')
 HF_API_URL = 'https://api-inference.huggingface.co/models'
 
 def process_image(image_file: FileStorage) -> str:

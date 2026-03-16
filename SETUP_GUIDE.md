@@ -208,9 +208,9 @@ console.log(result);
 
 ### Backend (.env or .env.local)
 ```env
-HF_TOKEN=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
-PINECONE_KEY=pcsk_4GpH3o_...
-SCRAPER_KEY=eb66d83d-...
+HF_TOKEN=your_hugging_face_token_here
+PINCONE_KEY=your_pinecone_key_here
+SCRAPER_KEY=your_scraper_key_here
 FLASK_ENV=development
 BACKEND_PORT=5000
 ```
