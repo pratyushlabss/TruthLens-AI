@@ -5,6 +5,17 @@ const HF_TOKEN = process.env.HF_TOKEN;
 const PINECONE_KEY = process.env.PINECONE_KEY;
 const SCRAPER_KEY = process.env.SCRAPER_KEY;
 
+// Validate that required environment variables are set
+if (!HF_TOKEN) {
+  console.error("ERROR: HF_TOKEN environment variable is not set");
+}
+if (!PINECONE_KEY) {
+  console.error("ERROR: PINECONE_KEY environment variable is not set");
+}
+if (!SCRAPER_KEY) {
+  console.error("ERROR: SCRAPER_KEY environment variable is not set");
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -18,6 +29,9 @@ export async function POST(req: NextRequest) {
     // 1. AUTOPILOT SCRAPING (WebScraping.ai)
     if (urlInput) {
       try {
+        if (!SCRAPER_KEY) {
+          throw new Error("SCRAPER_KEY is not configured");
+        }
         const scrapeRes = await fetch(`https://api.webscraping.ai/html?url=${encodeURIComponent(urlInput)}&api_key=${SCRAPER_KEY}`);
         if (scrapeRes.ok) {
           const html = await scrapeRes.text();
@@ -31,6 +45,9 @@ export async function POST(req: NextRequest) {
 
     // 2. IMAGE ANALYSIS (Hugging Face BLIP)
     if (imageFile) {
+      if (!HF_TOKEN) {
+        throw new Error("HF_TOKEN is not configured");
+      }
       const imageBuffer = await imageFile.arrayBuffer();
       const blipRes = await fetch("https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base", {
         headers: { Authorization: `Bearer ${HF_TOKEN}` },
@@ -47,6 +64,10 @@ export async function POST(req: NextRequest) {
     
     if (!finalContent) {
        return NextResponse.json({ error: "No content provided for analysis" }, { status: 400 });
+    }
+
+    if (!HF_TOKEN) {
+      throw new Error("HF_TOKEN is not configured");
     }
 
     const nlpRes = await fetch("https://api-inference.huggingface.co/models/roberta-base-openai-detector", {

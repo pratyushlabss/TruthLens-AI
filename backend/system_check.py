@@ -3,6 +3,7 @@
 import subprocess
 import sys
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Tuple
 import importlib.util
@@ -98,12 +99,19 @@ class SystemHealthCheck:
             import psycopg2
 
             try:
+                # Load credentials from environment variables
+                db_host = os.getenv("DB_HOST", "localhost")
+                db_port = int(os.getenv("DB_PORT", 5432))
+                db_name = os.getenv("DB_NAME", "truthlens_db")
+                db_user = os.getenv("DB_USER", "postgres")
+                db_password = os.getenv("DB_PASSWORD", "postgres")
+
                 conn = psycopg2.connect(
-                    host="localhost",
-                    port=5432,
-                    database="truthlens_db",
-                    user="postgres",
-                    password="postgres",
+                    host=db_host,
+                    port=db_port,
+                    database=db_name,
+                    user=db_user,
+                    password=db_password,
                 )
                 conn.close()
                 return True, "PostgreSQL connection successful ✓"
@@ -112,6 +120,10 @@ class SystemHealthCheck:
                     False,
                     "PostgreSQL not running (expected for dev, use 'docker-compose up')",
                 )
+        except ImportError:
+            return False, "psycopg2 not installed"
+        except Exception as e:
+            return False, f"Database connection failed: {e}"
         except ImportError:
             return False, "psycopg2 not installed"
         except Exception as e:

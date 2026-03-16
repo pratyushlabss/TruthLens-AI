@@ -7,7 +7,7 @@ import os
 import requests
 from typing import List, Dict, Any, Optional
 
-PINECONE_KEY = os.getenv('PINECONE_KEY', 'pcsk_4GpH3o_LT2E8HvMKk1n2eR3ZAbFqiFD3xS5TxxMcDYujatBNZvcMYpvzrZP3dGj9qeHj9p')
+PINECONE_KEY = os.getenv('PINECONE_KEY')
 PINECONE_API_URL = 'https://api.pinecone.io/indexes/truthlens-evidence/vectors/query'
 
 def query_pinecone(

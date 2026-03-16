@@ -7,7 +7,7 @@ import os
 import requests
 from typing import Optional
 
-SCRAPER_KEY = os.getenv('SCRAPER_KEY', 'eb66d83d-416a-4f5e-8c7c-d5c2b6f89541')
+SCRAPER_KEY = os.getenv('SCRAPER_KEY')
 SCRAPER_API_URL = 'https://api.webscraping.ai/v1'
 
 def scrape_url(url: str, timeout: int = 30) -> str:

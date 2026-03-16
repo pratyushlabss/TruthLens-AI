@@ -17,6 +17,18 @@ from typing import Dict, List, Any, Tuple
 # Load environment variables
 load_dotenv()
 
+# Validate required environment variables
+required_env_vars = ["HF_TOKEN", "PINECONE_KEY", "SCRAPER_KEY"]
+missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+
+if missing_vars:
+    import warnings
+    warnings.warn(
+        f"WARNING: Missing required environment variables: {', '.join(missing_vars)}. "
+        f"Some features may not work correctly. Please set these variables in your .env file.",
+        RuntimeWarning
+    )
+
 # Import service modules
 from app.services.nlp_analyzer import analyze_with_nlp, generate_embeddings
 from app.services.image_processor import process_image

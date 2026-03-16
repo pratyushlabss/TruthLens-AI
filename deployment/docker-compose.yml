@@ -6,15 +6,15 @@ services:
     image: postgres:15-alpine
     container_name: truthlens-postgres
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: truthlens_db
+      POSTGRES_USER: ${DB_USER:-user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_DB: ${DB_NAME:-truthlens_db}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-user}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -38,9 +38,12 @@ services:
       dockerfile: deployment/Dockerfile
     container_name: truthlens-backend
     environment:
-      DATABASE_URL: postgresql://user:password@postgres:5432/truthlens_db
-      REDIS_URL: redis://redis:6379
-      ENV: production
+      DATABASE_URL: ${DATABASE_URL:-postgresql://user:password@postgres:5432/truthlens_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      ENV: ${FLASK_ENV:-production}
+      HF_TOKEN: ${HF_TOKEN}
+      PINECONE_KEY: ${PINECONE_KEY}
+      SCRAPER_KEY: ${SCRAPER_KEY}
     ports:
       - "8000:8000"
     depends_on:

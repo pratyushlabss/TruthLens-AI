@@ -31,10 +31,24 @@ wheels/
 *~
 .DS_Store
 
-# Environment
+# Environment & Secrets
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
+.env.*
+!.env.example
+*.pem
+*.key
+*.pub
+*.p8
+*.p12
+*.pfx
+*.jks
+secrets.json
+credentials.json
+config.json
 
 # Database
 *.db
