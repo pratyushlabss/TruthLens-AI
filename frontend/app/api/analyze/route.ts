@@ -1,101 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// PRODUCTION API KEYS - Load from environment variables
-const HF_TOKEN = process.env.HF_TOKEN;
-const PINECONE_KEY = process.env.PINECONE_KEY;
-const SCRAPER_KEY = process.env.SCRAPER_KEY;
-
-// Validate that required environment variables are set
-if (!HF_TOKEN) {
-  console.error("ERROR: HF_TOKEN environment variable is not set");
-}
-if (!PINECONE_KEY) {
-  console.error("ERROR: PINECONE_KEY environment variable is not set");
-}
-if (!SCRAPER_KEY) {
-  console.error("ERROR: SCRAPER_KEY environment variable is not set");
-}
+// Backend API URL (load from environment or default)
+const BACKEND_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export async function POST(req: NextRequest) {
   try {
+    // Forward the request to the backend API
+    // Backend is responsible for all API key management and external API calls
     const formData = await req.formData();
-    const textInput = formData.get("text") as string || "";
-    const urlInput = formData.get("url") as string || "";
-    const imageFile = formData.get("image") as File | null;
 
-    let processedText = textInput;
-    let imageDescription = "";
-
-    // 1. AUTOPILOT SCRAPING (WebScraping.ai)
-    if (urlInput) {
-      try {
-        if (!SCRAPER_KEY) {
-          throw new Error("SCRAPER_KEY is not configured");
-        }
-        const scrapeRes = await fetch(`https://api.webscraping.ai/html?url=${encodeURIComponent(urlInput)}&api_key=${SCRAPER_KEY}`);
-        if (scrapeRes.ok) {
-          const html = await scrapeRes.text();
-          // Clean HTML tags and limit length for model efficiency
-          processedText = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').substring(0, 2000);
-        }
-      } catch (err) {
-        console.error("Scraping failed, falling back to textInput");
-      }
-    }
-
-    // 2. IMAGE ANALYSIS (Hugging Face BLIP)
-    if (imageFile) {
-      if (!HF_TOKEN) {
-        throw new Error("HF_TOKEN is not configured");
-      }
-      const imageBuffer = await imageFile.arrayBuffer();
-      const blipRes = await fetch("https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base", {
-        headers: { Authorization: `Bearer ${HF_TOKEN}` },
-        method: "POST",
-        body: imageBuffer,
-      });
-      const blipData = await blipRes.json();
-      imageDescription = blipData[0]?.generated_text || "";
-    }
-
-    // 3. NLP CLASSIFICATION (Hugging Face RoBERTa)
-    // Combine scraped text, user text, and image context for a full picture
-    const finalContent = `${processedText} ${imageDescription}`.trim();
-    
-    if (!finalContent) {
-       return NextResponse.json({ error: "No content provided for analysis" }, { status: 400 });
-    }
-
-    if (!HF_TOKEN) {
-      throw new Error("HF_TOKEN is not configured");
-    }
-
-    const nlpRes = await fetch("https://api-inference.huggingface.co/models/roberta-base-openai-detector", {
-      headers: { Authorization: `Bearer ${HF_TOKEN}` },
+    // Forward form data to backend
+    const response = await fetch(`${BACKEND_API_URL}/api/analyze`, {
       method: "POST",
-      body: JSON.stringify({ inputs: finalContent }),
+      body: formData,
     });
-    
-    const nlpData = await nlpRes.json();
-    // Safety check for model warming up or API errors
-    const fakeScore = nlpData[0]?.find((item: any) => item.label === "Fake")?.score || 0.5;
 
-    // 4. FUSION CALCULATION (Weighted Logic)
-    const confidence = Math.round((1 - fakeScore) * 100);
-    const verdict = confidence > 70 ? "REAL" : confidence > 40 ? "RUMOR" : "FAKE";
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return NextResponse.json(
+        { error: errorData.error || "Backend analysis failed" },
+        { status: response.status }
+      );
+    }
 
-    return NextResponse.json({
-      verdict,
-      confidence,
-      details: {
-        text_analyzed: processedText.substring(0, 150) + "...",
-        image_context: imageDescription,
-        nlp_score: Number((1 - fakeScore).toFixed(4))
-      }
-    });
+    const analysisResult = await response.json();
+
+    return NextResponse.json(analysisResult);
 
   } catch (error: any) {
-    console.error("Analysis Error:", error);
-    return NextResponse.json({ error: "Analysis failed", details: error.message }, { status: 500 });
+    console.error("Frontend API Error:", error);
+    return NextResponse.json(
+      {
+        error: "Analysis failed",
+        details: error.message,
+        hint: `Make sure backend is running at ${BACKEND_API_URL}`,
+      },
+      { status: 500 }
+    );
   }
 }
