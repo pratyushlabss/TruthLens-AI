@@ -41,6 +41,37 @@ export interface AnalysisResult {
   explainability: string;
 }
 
+export interface SourceItem {
+  title: string;
+  url: string;
+  credibility_score: number;
+}
+
+export interface EnhancedAnalysisResponse {
+  verdict: "REAL" | "RUMOR" | "FAKE";
+  confidence: number;
+  scores: {
+    real: number;
+    rumor: number;
+    fake: number;
+  };
+  confidence_label: "LOW" | "MEDIUM" | "HIGH";
+  key_signals: string[];
+  highlighted_text: string[];
+  reasoning: string;
+  sources: SourceItem[];
+  summary: string;
+}
+
+export interface HistoryItem {
+  id: string;
+  text: string;
+  verdict: "REAL" | "RUMOR" | "FAKE";
+  confidence: number;
+  confidence_label: "LOW" | "MEDIUM" | "HIGH";
+  timestamp: string;
+}
+
 export interface SystemStatus {
   apiHealth: "healthy" | "degraded" | "down";
   modelHealth: "healthy" | "degraded" | "down";
