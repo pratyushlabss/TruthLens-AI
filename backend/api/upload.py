@@ -6,9 +6,6 @@ import os
 import aiofiles
 import logging
 from pathlib import Path
-from utils.image_grid_splitter import ImageGridSplitter
-from utils.aws_s3_handler import S3Handler
-from services.preprocessing_service import TextPreprocessor
 import tempfile
 
 logger = logging.getLogger(__name__)
@@ -19,10 +16,35 @@ UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/tmp/truthlens_uploads")
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".pdf", ".txt", ".docx"}
 
-# Initialize services
-image_processor = ImageGridSplitter(grid_size=3)
-text_preprocessor = TextPreprocessor()
-s3_handler = S3Handler()
+# Lazy-load heavy dependencies to avoid blocking startup
+# These are only loaded when the upload endpoint is actually used
+_image_processor = None
+_text_preprocessor = None
+_s3_handler = None
+
+def _get_image_processor():
+    """Lazily load image processor on first use."""
+    global _image_processor
+    if _image_processor is None:
+        from utils.image_grid_splitter import ImageGridSplitter
+        _image_processor = ImageGridSplitter(grid_size=3)
+    return _image_processor
+
+def _get_text_preprocessor():
+    """Lazily load text preprocessor on first use."""
+    global _text_preprocessor
+    if _text_preprocessor is None:
+        from services.preprocessing_service import TextPreprocessor
+        _text_preprocessor = TextPreprocessor()
+    return _text_preprocessor
+
+def _get_s3_handler():
+    """Lazily load S3 handler on first use."""
+    global _s3_handler
+    if _s3_handler is None:
+        from utils.aws_s3_handler import S3Handler
+        _s3_handler = S3Handler()
+    return _s3_handler
 
 # Store processing status
 upload_status = {}
@@ -80,11 +102,13 @@ async def upload_file(
             try:
                 # Process image with grid splitting and OCR
                 logger.info("Processing image with OCR")
+                image_processor = _get_image_processor()
                 image_result = image_processor.process_image(file_path)
                 extracted_text = image_result.get("extracted_text", "")
 
                 # Preprocess extracted text
                 if extracted_text:
+                    text_preprocessor = _get_text_preprocessor()
                     preprocessing_result = text_preprocessor.preprocess(
                         extracted_text
                     )
@@ -110,9 +134,13 @@ async def upload_file(
 
         # Upload to S3 if configured
         s3_url = None
-        if s3_handler.s3_client:
-            s3_key = f"uploads/{session_id or 'anonymous'}/{upload_id}/{file.filename}"
-            s3_url = s3_handler.upload_file(file_path, s3_key)
+        try:
+            s3_handler = _get_s3_handler()
+            if s3_handler.s3_client:
+                s3_key = f"uploads/{session_id or 'anonymous'}/{upload_id}/{file.filename}"
+                s3_url = s3_handler.upload_file(file_path, s3_key)
+        except Exception as e:
+            logger.warning(f"S3 upload failed: {e}")
 
         response = {
             "upload_id": upload_id,

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "@/lib/auth";
+import { AnalysisProvider } from "@/lib/analysis-context";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 
@@ -19,7 +21,11 @@ export default function RootLayout({
       <body
         className={`${inter.variable} bg-background text-foreground font-inter antialiased overflow-hidden`}
       >
-        {children}
+        <AuthProvider>
+          <AnalysisProvider>
+            {children}
+          </AnalysisProvider>
+        </AuthProvider>
       </body>
     </html>
   );

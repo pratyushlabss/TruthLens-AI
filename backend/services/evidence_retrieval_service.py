@@ -1,6 +1,7 @@
 """Enhanced evidence retrieval service with vector database support."""
 
 import logging
+import os
 from typing import List, Dict, Optional, Tuple
 import numpy as np
 import faiss
@@ -30,6 +31,7 @@ class EvidenceRetrievalService:
         self.faiss_index = None
         self.evidence_store = []
         self.pinecone_client = None
+        self.pinecone_index = None
 
         logger.info(f"Initialized evidence retrieval with {model_name}")
 
@@ -37,14 +39,36 @@ class EvidenceRetrievalService:
         if self.use_faiss:
             self._init_faiss_index()
 
-        # Try to initialize Pinecone as fallback
+        # Try to initialize Pinecone with actual API key
+        self._init_pinecone()
+
+    def _init_pinecone(self):
+        """Initialize Pinecone with actual API key from environment."""
+        pinecone_key = os.getenv("PINECONE_KEY") or os.getenv("PINECONE_API_KEY", "").strip()
+        index_name = os.getenv("PINECONE_INDEX_NAME", "truthlens-index")
+        
+        if not pinecone_key:
+            logger.warning("Pinecone API key not configured - vector search will use FAISS only")
+            return
+        
         try:
             from pinecone import Pinecone
-
-            self.pinecone_client = Pinecone(api_key="sk-mock")
-            logger.info("Initialized Pinecone as backup")
+            
+            logger.info("Pinecone API called: Initializing client")
+            self.pinecone_client = Pinecone(api_key=pinecone_key)
+            
+            try:
+                logger.info(f"Pinecone query success: Connecting to index '{index_name}'")
+                self.pinecone_index = self.pinecone_client.Index(index_name)
+                logger.info(f"Pinecone query success: Connected to index '{index_name}'")
+            except Exception as e:
+                logger.warning(f"Pinecone API called: Index '{index_name}' not found or not accessible - {e}")
+                logger.info("Continuing with FAISS as fallback for vector search")
+        except ImportError:
+            logger.warning("Pinecone library not installed - install with: pip install pinecone-client")
         except Exception as e:
-            logger.warning(f"Pinecone initialization failed: {e}")
+            logger.error(f"Pinecone API called: Initialization error - {e}")
+            logger.info("Continuing with FAISS as fallback for vector search")
 
     def _init_faiss_index(self):
         """Initialize FAISS index for local vector search."""

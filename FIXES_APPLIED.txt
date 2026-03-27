@@ -1,0 +1,15 @@
+TruthLens AI - Analysis Pipeline Stabilization
+==============================================
+
+FIXES TO APPLY (8 total):
+
+FIX 1: RetreivalEngine - Fallback Evidence
+FIX 2: EvidenceBuilder - Guaranteed Evidence
+FIX 3: VerdictEngine - Force Output
+FIX 4: ScoringEngine - Always Generate Explanation
+FIX 5: Add Fallback Flag Everywhere
+FIX 6: Evidence Quality Score
+FIX 7: Guarantee Final Response Structure
+FIX 8: Analyze Endpoint Fail-Safe
+
+Status: IMPLEMENTING...

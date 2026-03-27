@@ -74,3 +74,20 @@ class Query(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     session = relationship("Session", back_populates="queries")
+
+
+class ClaimHistory(Base):
+    """Flat history table for all analyzed claims."""
+    __tablename__ = "claim_history"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    text = Column(Text, nullable=False)
+    verdict = Column(String, nullable=False)
+    confidence = Column(Float, nullable=False)
+    confidence_label = Column(String, nullable=False)
+    scores = Column(JSON, nullable=True)
+    reasoning = Column(Text, nullable=True)
+    key_signals = Column(JSON, nullable=True)
+    highlighted_text = Column(JSON, nullable=True)
+    sources = Column(JSON, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)

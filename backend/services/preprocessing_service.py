@@ -32,7 +32,7 @@ except LookupError:
 class TextPreprocessor:
     """Comprehensive text preprocessing for claim analysis."""
 
-    def __init__(self, model_name: str = "en_core_web_sm"):
+    def __init__(self, model_name: str = "en_core_web_md"):
         """
         Initialize text preprocessor.
 
@@ -42,9 +42,13 @@ class TextPreprocessor:
         try:
             self.nlp = spacy.load(model_name)
             logger.info(f"Loaded spaCy model: {model_name}")
-        except Exception as e:
-            logger.error(f"Error loading spaCy model: {e}")
-            self.nlp = None
+        except Exception:
+            try:
+                self.nlp = spacy.load("en_core_web_sm")
+                logger.info("Loaded spaCy fallback model: en_core_web_sm")
+            except Exception as e:
+                logger.error(f"Error loading spaCy model: {e}")
+                self.nlp = None
 
         self.lemmatizer = WordNetLemmatizer()
         self.stemmer = PorterStemmer()

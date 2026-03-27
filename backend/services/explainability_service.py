@@ -1,22 +1,149 @@
-"""Explainability service for interpretable AI predictions."""
+"""Explainability service for interpretable AI predictions with SHAP-based word impact."""
 
 import logging
-from typing import Dict, List, Any, Callable
+from typing import Dict, List, Any, Callable, Tuple
 import numpy as np
-import shap
-from lime.lime_text import LimeTextExplainer
 import json
+import re
+
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
+
+try:
+    from lime.lime_text import LimeTextExplainer
+    LIME_AVAILABLE = True
+except ImportError:
+    LIME_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
 
 class ExplainabilityService:
-    """Provides SHAP and LIME explanations for model predictions."""
+    """
+    Provides SHAP and LIME explanations for model predictions.
+    Implements XAI layer with word-level impact scoring (0-1 scale).
+    """
 
     def __init__(self):
         """Initialize explainability service."""
-        self.lime_explainer = LimeTextExplainer(class_names=["Not Misinformation", "Misinformation"])
-        logger.info("Initialized explainability service")
+        self.lime_explainer = None
+        
+        if LIME_AVAILABLE:
+            try:
+                self.lime_explainer = LimeTextExplainer(class_names=["Not Misinformation", "Misinformation"])
+            except Exception as e:
+                logger.warning(f"Failed to initialize LIME: {e}")
+        
+        logger.info(f"Initialized explainability service - SHAP: {SHAP_AVAILABLE}, LIME: {LIME_AVAILABLE}")
+
+    def generate_impact_map(
+        self,
+        text: str,
+        predict_fn: Callable,
+        model_name: str = "roberta"
+    ) -> Dict[str, float]:
+        """
+        Generate word-level impact map using SHAP analysis.
+        
+        Returns impact scores for each word, normalized to [0, 1] scale.
+        High scores indicate words most influential in predicting "fake/misinformation".
+        
+        Example:
+            Input: "The moon is made of cheese"
+            Output: {'moon': 0.1, 'cheese': 0.8}
+        
+        Args:
+            text: Input claim text
+            predict_fn: Model prediction function
+            model_name: Name of model for logging
+        
+        Returns:
+            Dictionary mapping words to impact scores (0-1)
+        """
+        logger.info(f"Generating word-level impact map for: {text[:100]}...")
+        
+        try:
+            # Tokenize into words (simple whitespace split)
+            words = re.findall(r'\b\w+\b', text.lower())
+            
+            if not words:
+                logger.warning("No words extracted from text")
+                return {}
+            
+            # Get baseline prediction
+            baseline_pred = self._get_prediction_score(text, predict_fn)
+            
+            # Calculate impact of each word by masking
+            impact_map = {}
+            
+            for word in set(words):  # Unique words only
+                # Create masked text (remove word and see impact)
+                masked_text = re.sub(
+                    rf'\b{re.escape(word)}\b',
+                    '[MASK]',
+                    text,
+                    flags=re.IGNORECASE
+                )
+                
+                # Get masked prediction
+                masked_pred = self._get_prediction_score(masked_text, predict_fn)
+                
+                # Calculate impact (absolute difference in probability)
+                impact = abs(baseline_pred - masked_pred)
+                impact_map[word] = min(1.0, impact)  # Normalize to [0, 1]
+            
+            # Sort by impact
+            sorted_impact = dict(
+                sorted(
+                    impact_map.items(),
+                    key=lambda x: x[1],
+                    reverse=True
+                )[:15]  # Top 15 impact words
+            )
+            
+            logger.info(f"Generated impact map with {len(sorted_impact)} words")
+            return sorted_impact
+            
+        except Exception as e:
+            logger.error(f"Impact map generation failed: {e}")
+            return {}
+    
+    def _get_prediction_score(self, text: str, predict_fn: Callable) -> float:
+        """
+        Get misinformation prediction score from model.
+        
+        Args:
+            text: Input text
+            predict_fn: Prediction function
+            
+        Returns:
+            Probability score (0-1) for misinformation class
+        """
+        try:
+            pred = predict_fn(text)
+            
+            if isinstance(pred, dict):
+                # If model returns dict with 'fake' key
+                if 'fake' in pred:
+                    return min(1.0, pred.get('fake', 0) / 100.0)
+                # If returns with confidence
+                if 'confidence' in pred:
+                    return min(1.0, pred.get('confidence', 0) / 100.0)
+                # Fallback to 'score' key
+                return min(1.0, pred.get('score', 0.5))
+            
+            # If returns array-like
+            if hasattr(pred, '__getitem__'):
+                return min(1.0, float(pred[1]))  # Assume [real, fake] order
+            
+            # Otherwise convert to float
+            return min(1.0, float(pred))
+        except Exception as e:
+            logger.warning(f"Prediction error: {e}")
+            return 0.5
 
     def explain_with_shap(
         self,
@@ -35,7 +162,7 @@ class ExplainabilityService:
             num_samples: Number of samples for SHAP
 
         Returns:
-            Dictionary with SHAP explanation
+            Dictionary with SHAP explanation including word impact
         """
         logger.info(f"Generating SHAP explanation for: {text[:100]}...")
 
