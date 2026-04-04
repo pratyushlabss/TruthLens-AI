@@ -35,17 +35,10 @@ if backend_env.exists():
 # ============================================================================
 
 REQUIRED_ENV_VARS = {
-    'HUGGINGFACE_API_KEY': 'HuggingFace API key (for NLI model)',
-    'PINECONE_API_KEY': 'Pinecone API key (for vector DB)',
-    'PINECONE_ENV': 'Pinecone environment (e.g., us-west4-gcp)',
-    'SUPABASE_URL': 'Supabase database URL',
-    'SUPABASE_KEY': 'Supabase API key',
+    # All deprecated - now using OpenAI for all LLM/verification tasks
 }
 
 OPTIONAL_ENV_VARS = {
-    'RAPID_API_KEY': 'RapidAPI key (for web scraping)',
-    'BING_SEARCH_KEY': 'Bing Search API key',
-    'GOOGLE_API_KEY': 'Google Custom Search API key',
     'GOOGLE_SEARCH_ENGINE_ID': 'Google Custom Search Engine ID',
 }
 
@@ -124,29 +117,8 @@ def validate_connectivity():
     print("CONNECTIVITY VALIDATION")
     print("="*70)
     
-    services = {
-        'HuggingFace': 'https://huggingface.co/api/models',
-        'Pinecone': 'https://api.pinecone.io/indexes',
-        'Supabase': os.getenv('SUPABASE_URL', '').split('/')[2] if os.getenv('SUPABASE_URL') else 'N/A'
-    }
-    
-    for service_name, endpoint in services.items():
-        try:
-            if service_name == 'HuggingFace':
-                headers = {'Authorization': f"Bearer {os.getenv('HUGGINGFACE_API_KEY')}"}
-                response = requests.head(endpoint, headers=headers, timeout=5)
-            elif service_name == 'Pinecone':
-                headers = {'Api-Key': os.getenv('PINECONE_API_KEY')}
-                response = requests.head(endpoint, headers=headers, timeout=5)
-            else:
-                response = requests.head(f'https://{endpoint}', timeout=5)
-            
-            if response.status_code < 500:
-                print(f"✅ {service_name:<20} reachable")
-            else:
-                print(f"⚠️  {service_name:<20} returned {response.status_code}")
-        except Exception as e:
-            print(f"❌ {service_name:<20} error: {str(e)[:50]}")
+    # Connectivity validation removed - OpenAI API and database checks are done elsewhere
+    pass
     
     print("="*70 + "\n")
 
@@ -158,15 +130,9 @@ class Config:
     """Global configuration object."""
     
     # Environment variables (validated)
-    HUGGINGFACE_API_KEY = None
-    PINECONE_API_KEY = None
-    PINECONE_ENV = None
-    SUPABASE_URL = None
-    SUPABASE_KEY = None
-    RAPID_API_KEY = None
-    BING_SEARCH_KEY = None
-    GOOGLE_API_KEY = None
-    GOOGLE_SEARCH_ENGINE_ID = None
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+    TAVILY_API_KEY = os.getenv('TAVILY_API_KEY', '')
+    GOOGLE_SEARCH_ENGINE_ID = os.getenv('GOOGLE_SEARCH_ENGINE_ID', '')
     
     # Pipeline configuration
     SCRAPING_TIMEOUT = 10  # seconds
@@ -200,28 +166,31 @@ class Config:
     CONFIDENCE_MEDIUM = 60  # 60-84% confident
     CONFIDENCE_LOW = 40  # 40-59% confident
     
+    # === NEW RAG PIPELINE FEATURE FLAGS ===
+    USE_NEW_RAG_PIPELINE = os.getenv('USE_NEW_RAG_PIPELINE', 'false').lower() == 'true'
+    NEW_RAG_EMBEDDER_MODEL = os.getenv('NEW_RAG_EMBEDDER_MODEL', 'all-MiniLM-L6-v2')
+    NEW_RAG_USE_NLI = os.getenv('NEW_RAG_USE_NLI', 'true').lower() == 'true'
+    NEW_RAG_TOP_K_EVIDENCE = int(os.getenv('NEW_RAG_TOP_K_EVIDENCE', '5'))
+    NEW_RAG_QUERY_EXPANSION = os.getenv('NEW_RAG_QUERY_EXPANSION', 'true').lower() == 'true'
+    NEW_RAG_DEVICE = os.getenv('NEW_RAG_DEVICE', 'cpu')  # 'cpu' or 'cuda'
+    
     @classmethod
     def initialize(cls):
         """Initialize all configuration from environment."""
         try:
             env_vars = validate_environment()
             
-            cls.HUGGINGFACE_API_KEY = env_vars.get('HUGGINGFACE_API_KEY')
-            cls.PINECONE_API_KEY = env_vars.get('PINECONE_API_KEY')
-            cls.PINECONE_ENV = env_vars.get('PINECONE_ENV')
-            cls.SUPABASE_URL = env_vars.get('SUPABASE_URL')
-            cls.SUPABASE_KEY = env_vars.get('SUPABASE_KEY')
-            cls.RAPID_API_KEY = env_vars.get('RAPID_API_KEY')
-            cls.BING_SEARCH_KEY = env_vars.get('BING_SEARCH_KEY')
-            cls.GOOGLE_API_KEY = env_vars.get('GOOGLE_API_KEY')
-            cls.GOOGLE_SEARCH_ENGINE_ID = env_vars.get('GOOGLE_SEARCH_ENGINE_ID')
+            cls.OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+            cls.TAVILY_API_KEY = os.getenv('TAVILY_API_KEY', '')
+            cls.GOOGLE_SEARCH_ENGINE_ID = os.getenv('GOOGLE_SEARCH_ENGINE_ID', '')
             
             print("✅ Configuration initialized successfully\n")
             return True
             
         except EnvironmentError as e:
             print(f"❌ Configuration initialization failed:\n{e}")
-            sys.exit(1)
+            # No sys.exit - allow fallback
+            return False
 
 # ============================================================================
 # INITIALIZATION

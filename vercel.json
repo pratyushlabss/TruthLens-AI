@@ -1,0 +1,26 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install --legacy-peer-deps",
+  "env": {
+    "NEXT_PUBLIC_API_BASE_URL": "@vercel_api_base_url",
+    "NEXTAUTH_URL": "@vercel_nextauth_url",
+    "NEXTAUTH_SECRET": "@vercel_nextauth_secret"
+  },
+  "envs": {
+    "preview": {
+      "buildCommand": "npm run build",
+      "outputDirectory": ".next"
+    },
+    "production": {
+      "buildCommand": "npm run build",
+      "outputDirectory": ".next"
+    }
+  },
+  "nodeVersion": "24.x",
+  "functions": {
+    "frontend/**": {
+      "maxDuration": 60
+    }
+  }
+}

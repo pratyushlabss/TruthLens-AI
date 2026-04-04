@@ -62,20 +62,9 @@ class EvidenceEngine:
             raise
     
     def _init_pinecone(self):
-        """Initialize Pinecone vector database for semantic search."""
-        try:
-            import pinecone
-            
-            api_key = os.getenv("PINECONE_API_KEY", "")
-            environment = os.getenv("PINECONE_ENVIRONMENT", "us-west1-gcp")
-            
-            if api_key:
-                pinecone.init(api_key=api_key, environment=environment)
-                self.pinecone_index = pinecone.Index("truthlens-evidence")
-                logger.info("Pinecone vector database initialized")
-        except Exception as e:
-            logger.debug(f"Pinecone initialization info: {e}")
-            self.pinecone_index = None
+        """DEPRECATED: Pinecone vector database removed - using OpenAI instead."""
+        # Previously used for semantic search, now handled by OpenAI
+        self.pinecone_index = None
     
     def get_embedding(self, text: str) -> np.ndarray:
         """

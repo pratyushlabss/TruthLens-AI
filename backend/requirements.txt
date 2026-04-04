@@ -68,6 +68,7 @@ newspaper3k==0.2.8
 beautifulsoup4==4.12.2
 lxml==4.9.3
 feedparser==6.0.10
+wikipedia-api==0.5.4
 
 # === Vector Databases ===
 pinecone-client==3.0.1  # DEPRECATED - replaced with new 'pinecone' package below

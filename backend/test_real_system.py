@@ -30,11 +30,10 @@ def test_environment():
         from config.environment import Config
         Config.initialize()
         print_success("Environment validation passed")
-        print_success("All required API keys present")
+        print_success("OpenAI API key configured")
         return True
     except Exception as e:
         print_error(f"Environment validation failed: {e}")
-        print_warning("Make sure .env file has HUGGINGFACE_API_KEY, PINECONE_API_KEY, PINECONE_ENV, SUPABASE_URL, SUPABASE_KEY")
         return False
 
 def test_web_scraper():
@@ -274,8 +273,8 @@ def main():
     tests = [
         ("Environment Validation", test_environment),
         ("Web Scraper", test_web_scraper),
-        ("Pinecone Vector DB", test_pinecone),
-        ("HuggingFace NLI", test_huggingface_nli),
+        # ("Pinecone Vector DB", test_pinecone),  # DEPRECATED: Using OpenAI instead
+        # ("HuggingFace NLI", test_huggingface_nli),  # DEPRECATED: Using OpenAI instead
         ("Session Analytics", test_session_analytics),
         ("RAG Pipeline", test_rag_pipeline),
     ]

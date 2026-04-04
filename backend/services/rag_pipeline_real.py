@@ -50,14 +50,15 @@ class RealRAGPipeline:
         
         self.search_generator = SearchURLGenerator()
         
-        self.vector_db = PineconeVectorDB(
-            api_key=Config.PINECONE_API_KEY,
-            env=Config.PINECONE_ENV
-        )
-        
-        self.nli_model = HuggingFaceNLI(
-            api_key=Config.HUGGINGFACE_API_KEY
-        )
+        # DEPRECATED: Pinecone and HuggingFace services removed
+        # Using OpenAI for all LLM and verification tasks instead
+        # self.vector_db = PineconeVectorDB(
+        #     api_key=Config.PINECONE_API_KEY,
+        #     env=Config.PINECONE_ENV
+        # )
+        # self.nli_model = HuggingFaceNLI(
+        #     api_key=Config.HUGGINGFACE_API_KEY
+        # )
         
         logger.info("✅ RAG Pipeline initialized successfully\n")
     

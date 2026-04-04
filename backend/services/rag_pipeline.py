@@ -17,8 +17,7 @@ class RagPipeline:
     def __init__(self):
         """Initialize RAG pipeline with configured API keys."""
         # Load API Keys from environment
-        self.hf_token = os.getenv("HF_TOKEN", "").strip()
-        self.pinecone_key = os.getenv("PINECONE_KEY") or os.getenv("PINECONE_API_KEY", "").strip()
+        # DEPRECATED: HuggingFace and Pinecone removed - using OpenAI instead
         self.scraper_key = os.getenv("SCRAPER_KEY", "").strip()
         
         # Web search fallback keys (if available)
@@ -29,8 +28,7 @@ class RagPipeline:
         
         # Check API key availability and log status
         logger.info("=== RAG Pipeline API Configuration ===")
-        logger.info(f"HuggingFace API: {'✓ CONFIGURED' if self.hf_token else '✗ MISSING'}")
-        logger.info(f"Pinecone API: {'✓ CONFIGURED' if self.pinecone_key else '✗ MISSING'}")
+        logger.info(f"OpenAI API: {'✓ CONFIGURED' if self.llm_api_key else '✗ MISSING'}")
         logger.info(f"Web Scraper API: {'✓ CONFIGURED' if self.scraper_key else '✗ MISSING'}")
         logger.info(f"Serper Search: {'✓ CONFIGURED' if self.serper_api_key else '✗ MISSING'}")
         logger.info(f"Google Search: {'✓ CONFIGURED' if (self.google_api_key and self.google_search_engine_id) else '✗ MISSING'}")

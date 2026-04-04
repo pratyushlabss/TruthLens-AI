@@ -27,7 +27,7 @@ from datetime import datetime
 import time
 
 # Import routes
-from api import analyze, upload, sessions, auth, analytics
+from api import analyze, analyze_v2, upload, sessions, auth, analytics
 from services.monitoring import get_metrics_collector, StructuredLogger
 
 # Configure logging for production
@@ -37,6 +37,46 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 structured_logger = StructuredLogger(__name__)
+
+# ============================================================================
+# ENVIRONMENT VARIABLE VERIFICATION
+# ============================================================================
+
+def verify_environment():
+    """Verify and log all required environment variables."""
+    env_vars = {
+        "OPENAI_API_KEY": "OpenAI API for LLM reasoning",
+        "TAVILY_API_KEY": "Tavily API for web search"
+    }
+    
+    missing_keys = []
+    
+    for key, description in env_vars.items():
+        value = os.getenv(key, "").strip()
+        if value:
+            # Log with masked value for security
+            masked = f"{value[:10]}...{value[-10:]}" if len(value) > 20 else "***"
+            structured_logger.info(f"✅ {key} loaded", masked=masked, description=description)
+        else:
+            structured_logger.warning(f"⚠️ {key} NOT SET", description=description)
+            missing_keys.append(key)
+    
+    if "OPENAI_API_KEY" in missing_keys:
+        structured_logger.error("❌ CRITICAL: OPENAI_API_KEY not found. LLM reasoning will fail.")
+    
+    if "TAVILY_API_KEY" in missing_keys:
+        structured_logger.warning("⚠️ TAVILY_API_KEY not set. Using Wikipedia-only retrieval.")
+    
+    return len(missing_keys) == 0 or "TAVILY_API_KEY" in missing_keys  # OPENAI required, TAVILY optional
+
+
+# Verify environment at startup
+try:
+    env_ok = verify_environment()
+    if not env_ok:
+        structured_logger.error("❌ Environment verification FAILED - critical keys missing")
+except Exception as e:
+    structured_logger.error(f"❌ Environment verification error: {e}", exc_info=True)
 
 
 # Error response model
@@ -182,6 +222,7 @@ async def monitor_requests(request: Request, call_next):
 # Include routers
 app.include_router(auth.router, tags=["Authentication"])
 app.include_router(analyze.router, prefix="/api", tags=["Analysis"])
+app.include_router(analyze_v2.router, prefix="/api", tags=["AnalysisV2"])
 app.include_router(upload.router, prefix="/api", tags=["Upload"])
 app.include_router(sessions.router, prefix="/api", tags=["Sessions"])
 app.include_router(analytics.router, prefix="/api", tags=["Analytics"])
