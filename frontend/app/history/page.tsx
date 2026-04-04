@@ -20,12 +20,21 @@ export default function HistoryPage() {
       try {
         const response = await fetch("/api/history", { cache: "no-store" });
         const data = await response.json();
+        
         if (!response.ok) {
-          throw new Error(data.error || "Failed to load history");
+          const errorMsg = data.error || data.detail || `Failed to load history (${response.status})`;
+          console.error('History API error:', errorMsg, data);
+          throw new Error(errorMsg);
         }
-        setHistory(Array.isArray(data.history) ? data.history : []);
+        
+        // Handle both direct array and object with history property
+        const historyArray = Array.isArray(data) ? data : (data.history || []);
+        setHistory(historyArray);
+        console.log('History loaded successfully:', historyArray.length, 'items');
       } catch (err: any) {
-        setError(err.message || "History unavailable");
+        const errorMsg = err?.message || "Failed to load analysis history";
+        console.error('History load error:', errorMsg);
+        setError(errorMsg);
       } finally {
         setLoading(false);
       }

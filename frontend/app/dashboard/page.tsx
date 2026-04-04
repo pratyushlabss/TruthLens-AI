@@ -51,13 +51,22 @@ export default function DashboardPage() {
         const response = await fetch('/api/history', {
           headers: user?.id ? { 'X-User-ID': user.id } : {},
         });
-        if (response.ok) {
-          const history = await response.json();
-          // Take the last 10 analyses
-          setRecentAnalyses(history.slice(-10).reverse());
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          console.warn('Failed to load history:', response.status, data);
+          // Don't throw - allow dashboard to work without history
+          return;
         }
-      } catch (error) {
-        console.error('Failed to load history:', error);
+        
+        // Take the last 10 analyses
+        const historyArray = Array.isArray(data) ? data : (data.history || []);
+        setRecentAnalyses(historyArray.slice(-10).reverse());
+        console.log('History loaded successfully:', historyArray.length, 'items');
+      } catch (error: any) {
+        console.error('Failed to load history:', error.message || error);
+        // Don't throw - allow dashboard to work without history
       }
     };
 

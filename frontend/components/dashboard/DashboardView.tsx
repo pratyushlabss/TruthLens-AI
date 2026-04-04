@@ -55,7 +55,10 @@ export default function DashboardView({ onAnalysisComplete }: DashboardViewProps
       });
 
       if (!response.ok) {
-        throw new Error('Analysis failed');
+        const errorData = await response.json().catch(() => ({}));
+        const errorMsg = errorData.detail || errorData.error || `Analysis failed (${response.status})`;
+        console.error('Analysis API error:', errorMsg, errorData);
+        throw new Error(errorMsg);
       }
 
       const data = await response.json();
@@ -77,9 +80,9 @@ export default function DashboardView({ onAnalysisComplete }: DashboardViewProps
       
       // Call callback
       onAnalysisComplete?.(enrichedAnalysis);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Analysis error:', error);
-      alert('Failed to analyze claim. Please try again.');
+      alert(`Error: ${error?.message || 'Failed to analyze claim. Please try again.'}`);
     } finally {
       setLoading(false);
     }
@@ -105,7 +108,10 @@ export default function DashboardView({ onAnalysisComplete }: DashboardViewProps
       });
 
       if (!response.ok) {
-        throw new Error('Analysis failed');
+        const errorData = await response.json().catch(() => ({}));
+        const errorMsg = errorData.detail || errorData.error || `Image analysis failed (${response.status})`;
+        console.error('Image analysis API error:', errorMsg, errorData);
+        throw new Error(errorMsg);
       }
 
       const data = await response.json();
@@ -127,9 +133,9 @@ export default function DashboardView({ onAnalysisComplete }: DashboardViewProps
       
       // Call callback
       onAnalysisComplete?.(enrichedAnalysis);
-    } catch (error) {
-      console.error('Analysis error:', error);
-      alert('Failed to analyze image and claim');
+    } catch (error: any) {
+      console.error('Image analysis error:', error);
+      alert(`Error: ${error?.message || 'Failed to analyze image and claim'}`);
     } finally {
       setLoading(false);
     }
