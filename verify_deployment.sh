@@ -30,13 +30,12 @@ else
     exit 1
 fi
 
-# Test 2: Virtual environment
+# Test 2: Virtual environment (skip in production)
 echo -e "\n${YELLOW}[TEST 2]${NC} Checking virtual environment..."
 if [ -d "$VENV" ]; then
     echo -e "${GREEN}✓${NC} Virtual environment exists"
 else
-    echo -e "${RED}✗${NC} Virtual environment not found"
-    exit 1
+    echo -e "${YELLOW}⚠${NC} No local .venv (production mode - platform handles dependencies)"
 fi
 
 # Test 3: App imports

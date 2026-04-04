@@ -22,17 +22,15 @@ echo -e "${GREEN}╚════════════════════
 # Step 1: Check environment
 echo -e "\n${YELLOW}[1/5]${NC} Checking environment..."
 
-if [ ! -d "$VENV_PATH" ]; then
-    echo -e "${RED}✗${NC} Virtual environment not found"
-    echo "    Run: python3 -m venv $VENV_PATH"
-    exit 1
+# Skip venv check in production (Render/Railway will handle dependencies)
+if [ -d "$VENV_PATH" ]; then
+    echo -e "${GREEN}✓${NC} Virtual environment found locally"
+    source "$VENV_PATH/bin/activate"
+    echo -e "${GREEN}✓${NC} Venv activated"
+else
+    echo -e "${YELLOW}⚠${NC} Running in production mode (no local .venv needed)"
+    echo -e "${GREEN}✓${NC} Environment OK"
 fi
-echo -e "${GREEN}✓${NC} Virtual environment OK"
-
-# Step 2: Activate venv
-echo -e "\n${YELLOW}[2/5]${NC} Activating virtual environment..."
-source "$VENV_PATH/bin/activate"
-echo -e "${GREEN}✓${NC} Venv activated"
 
 # Step 3: Kill old processes
 echo -e "\n${YELLOW}[3/5]${NC} Cleaning up old processes..."

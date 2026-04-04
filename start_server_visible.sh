@@ -18,12 +18,11 @@ BACKEND_DIR="$PROJECT_ROOT/backend"
 VENV="$PROJECT_ROOT/.venv/bin/python"
 
 # Check if venv exists
-if [ ! -f "$VENV" ]; then
-    echo "❌ Virtual environment not found!"
-    echo "   Expected at: $VENV"
-    echo ""
-    echo "Please run: python -m venv .venv && source .venv/bin/activate && pip install -r backend/requirements.txt"
-    exit 1
+if [ -f "$VENV" ]; then
+    echo "✅ Found virtual environment"
+else
+    # Production mode - platform handles dependencies
+    echo "⚠️  Running in production mode (no local .venv needed)"
 fi
 
 # Kill any existing servers on port 8000

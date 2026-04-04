@@ -12,15 +12,14 @@ VENV_PATH="/Users/pratyush/ai truthlens/.venv"
 WORK_DIR="/Users/pratyush/ai truthlens"
 
 # Check environment
-if [ ! -d "$VENV_PATH" ]; then
-    echo "❌ Virtual environment not found at $VENV_PATH"
-    echo "Please run: python3 -m venv $VENV_PATH"
-    exit 1
+if [ -d "$VENV_PATH" ]; then
+    # Activate venv
+    echo "📦 Activating virtual environment..."
+    source "$VENV_PATH/bin/activate"
+else
+    # Production mode - platform handles dependencies
+    echo "⚠️ No local .venv found (production mode)"
 fi
-
-# Activate venv
-echo "📦 Activating virtual environment..."
-source "$VENV_PATH/bin/activate"
 
 # Kill any existing processes on ports
 echo "🔧 Cleaning up old processes..."

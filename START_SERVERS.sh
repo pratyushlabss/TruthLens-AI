@@ -27,14 +27,14 @@ sleep 2
 echo -e "${YELLOW}Starting Backend...${NC}"
 cd "$DIR/backend"
 
-# Check if virtual environment exists
-if [ ! -d ".venv" ] && [ ! -d "../.venv" ]; then
-    echo -e "${RED}Virtual environment not found!${NC}"
-    echo "Please run: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt"
-    exit 1
+# Check if virtual environment exists (optional - for local development)
+if [ -d ".venv" ] || [ -d "../.venv" ]; then
+    echo -e "${GREEN}✓${NC} Virtual environment found"
+else
+    echo -e "${YELLOW}⚠${NC} Running in production mode (no local .venv needed)"
 fi
 
-# Use the venv from parent directory if it exists
+# Use the venv from parent directory if it exists, otherwise use system python
 if [ -f "../.venv/bin/python" ]; then
     PYTHON="../.venv/bin/python"
 else
