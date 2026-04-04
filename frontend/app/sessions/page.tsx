@@ -66,7 +66,7 @@ export default function SessionsPage() {
             📜 Analysis History
           </h1>
           <p style={{ color: COLORS.text.secondary }} className="mb-8">
-            All claims you've analyzed in real-time mode
+            All claims you&apos;ve analyzed in real-time mode
           </p>
 
           {!sessions || sessions.length === 0 ? (

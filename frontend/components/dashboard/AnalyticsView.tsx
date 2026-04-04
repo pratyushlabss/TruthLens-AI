@@ -71,103 +71,51 @@ const itemVariants = {
 };
 
 export default function AnalyticsView() {
-  const [sourceDistribution, setSourceDistribution] = useState<any[]>([]);
-  const [confidenceDistribution, setConfidenceDistribution] = useState<any[]>([]);
-  const [heatmapData, setHeatmapData] = useState<any[]>([]);
-  const [topSources, setTopSources] = useState<any[]>([]);
-  const [uncertainClaims, setUncertainClaims] = useState<any[]>([]);
-  
-  // Get analytics data from context
-  const { analyticsData, sessions } = useAnalysis();
+  // Get unified data from centralized context
+  const { analyticsData, latestAnalysis } = useAnalysis();
 
-  // Update visualizations when analytics data changes
-  useEffect(() => {
-    if (!analyticsData) {
-      setSourceDistribution([]);
-      setConfidenceDistribution([]);
-      setHeatmapData([]);
-      setTopSources([]);
-      setUncertainClaims([]);
-      return;
-    }
+  // Memoize verdict distribution chart data
+  const verdictChartData = React.useMemo(() => {
+    if (!analyticsData) return [];
+    return [
+      {
+        name: 'True',
+        value: analyticsData.verdict_distribution.TRUE,
+        color: COLORS.verdict.real,
+      },
+      {
+        name: 'False',
+        value: analyticsData.verdict_distribution.FALSE,
+        color: COLORS.verdict.fake,
+      },
+      {
+        name: 'Uncertain',
+        value: analyticsData.verdict_distribution.UNCERTAIN,
+        color: COLORS.verdict.rumor,
+      },
+    ];
+  }, [analyticsData]);
 
-    // Build source distribution from context data
-    if (analyticsData.confidence_distribution) {
-      setSourceDistribution([
-        {
-          name: 'High Credibility',
-          value: analyticsData.confidence_distribution.high || 0,
-          color: COLORS.verdict.real,
-        },
-        {
-          name: 'Medium Credibility',
-          value: analyticsData.confidence_distribution.medium || 0,
-          color: COLORS.verdict.rumor,
-        },
-        {
-          name: 'Low Credibility',
-          value: analyticsData.confidence_distribution.low || 0,
-          color: COLORS.verdict.fake,
-        },
-      ]);
-    }
-
-    // Build confidence distribution from verdict breakdown
-    if (analyticsData.verdict_distribution) {
-      setConfidenceDistribution([
-        {
-          name: 'True',
-          value: analyticsData.verdict_distribution.TRUE || 0,
-          color: COLORS.verdict.real,
-        },
-        {
-          name: 'False',
-          value: analyticsData.verdict_distribution.FALSE || 0,
-          color: COLORS.verdict.fake,
-        },
-        {
-          name: 'Uncertain',
-          value: analyticsData.verdict_distribution.UNCERTAIN || 0,
-          color: COLORS.verdict.rumor,
-        },
-      ]);
-    }
-
-    // Build top sources from context
-    if (analyticsData.source_usage && Array.isArray(analyticsData.source_usage)) {
-      const topSourcesList = analyticsData.source_usage
-        .slice(0, 5)
-        .map((source: any) => ({
-          name: source.name,
-          credibility: Math.round((source.avg_credibility || 0) * 100),
-          frequency: source.frequency || 0,
-        }));
-      setTopSources(topSourcesList);
-    }
-
-    // Build heatmap from context
-    if (analyticsData.heatmap_data && Array.isArray(analyticsData.heatmap_data)) {
-      const heatmap = analyticsData.heatmap_data
-        .slice(0, 8)
-        .map((item: any) => ({
-          source: item.source,
-          bars: item.bars || [],
-        }));
-      setHeatmapData(heatmap);
-    }
-
-    // Build uncertain claims from context
-    if (analyticsData.recent_analyses && Array.isArray(analyticsData.recent_analyses)) {
-      const uncertain = analyticsData.recent_analyses
-        .filter((analysis: any) => analysis.confidence < 0.6)
-        .slice(0, 5)
-        .map((analysis: any) => ({
-          claim: analysis.input_text,
-          confidence: analysis.confidence,
-          verdict: analysis.verdict,
-        }));
-      setUncertainClaims(uncertain);
-    }
+  // Memoize confidence distribution data
+  const confidenceChartData = React.useMemo(() => {
+    if (!analyticsData) return [];
+    return [
+      {
+        name: 'High (≥80%)',
+        value: analyticsData.confidence_distribution.high,
+        color: COLORS.verdict.real,
+      },
+      {
+        name: 'Medium (50-79%)',
+        value: analyticsData.confidence_distribution.medium,
+        color: COLORS.verdict.rumor,
+      },
+      {
+        name: 'Low (<50%)',
+        value: analyticsData.confidence_distribution.low,
+        color: COLORS.verdict.fake,
+      },
+    ];
   }, [analyticsData]);
 
   return (
@@ -184,373 +132,264 @@ export default function AnalyticsView() {
           style={{ color: COLORS.text.primary }}
           className="text-4xl font-bold mb-2"
         >
-          🧠 AI Intelligence Dashboard
+          📊 Analytics
         </h1>
         <p style={{ color: COLORS.text.secondary }} className="text-lg">
-          Advanced analytics and evidence patterns across all analyses
+          Unified view of all claim analyses and metrics
         </p>
       </motion.div>
 
-      {/* Pipeline Status */}
+      {/* Key Metrics */}
       <motion.div
         variants={itemVariants}
-        className="grid grid-cols-1 md:grid-cols-3 gap-4"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
       >
-        {[
-          { label: 'Scraping', status: 'active', icon: '🌐' },
-          { label: 'Evidence Extraction', status: 'active', icon: '📄' },
-          { label: 'Verdict Engine', status: 'active', icon: '⚙️' },
-        ].map((item, index) => (
-          <motion.div
-            key={index}
-            whileHover={{ scale: 1.02 }}
-            className="p-4 rounded-xl border"
-            style={{
-              backgroundColor: `${COLORS.bg.secondary}80`,
-              borderColor: COLORS.border.light,
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{item.icon}</span>
-                <div>
-                  <p style={{ color: COLORS.text.secondary }} className="text-xs uppercase">
-                    {item.label}
-                  </p>
-                  <p
-                    style={{ color: COLORS.verdict.real }}
-                    className="font-semibold text-sm"
-                  >
-                    ✓ Active
-                  </p>
-                </div>
-              </div>
-              <div
-                className="w-3 h-3 rounded-full animate-pulse"
-                style={{ backgroundColor: COLORS.verdict.real }}
-              />
-            </div>
-          </motion.div>
-        ))}
+        {/* Total Claims */}
+        <motion.div
+          className="p-6 rounded-2xl border"
+          style={{
+            backgroundColor: COLORS.bg.secondary,
+            borderColor: COLORS.border.light,
+          }}
+        >
+          <p style={{ color: COLORS.text.secondary }} className="text-sm mb-2">
+            Total Claims
+          </p>
+          <p style={{ color: COLORS.text.primary }} className="text-3xl font-bold">
+            {analyticsData?.total_claims || 0}
+          </p>
+        </motion.div>
+
+        {/* Accuracy Rate */}
+        <motion.div
+          className="p-6 rounded-2xl border"
+          style={{
+            backgroundColor: COLORS.bg.secondary,
+            borderColor: COLORS.border.light,
+          }}
+        >
+          <p style={{ color: COLORS.text.secondary }} className="text-sm mb-2">
+            Accuracy Rate
+          </p>
+          <p style={{ color: COLORS.verdict.real }} className="text-3xl font-bold">
+            {analyticsData?.accuracy_rate?.toFixed(1) || '0'}%
+          </p>
+        </motion.div>
+
+        {/* Average Response Time */}
+        <motion.div
+          className="p-6 rounded-2xl border"
+          style={{
+            backgroundColor: COLORS.bg.secondary,
+            borderColor: COLORS.border.light,
+          }}
+        >
+          <p style={{ color: COLORS.text.secondary }} className="text-sm mb-2">
+            Avg Response Time
+          </p>
+          <p style={{ color: COLORS.text.primary }} className="text-3xl font-bold">
+            {analyticsData?.avg_response_time?.toFixed(1) || '0'}s
+          </p>
+        </motion.div>
+
+        {/* Average Confidence */}
+        <motion.div
+          className="p-6 rounded-2xl border"
+          style={{
+            backgroundColor: COLORS.bg.secondary,
+            borderColor: COLORS.border.light,
+          }}
+        >
+          <p style={{ color: COLORS.text.secondary }} className="text-sm mb-2">
+            Avg Confidence
+          </p>
+          <p style={{ color: COLORS.text.primary }} className="text-3xl font-bold">
+            {((analyticsData?.avg_confidence || 0) * 100).toFixed(0)}%
+          </p>
+        </motion.div>
       </motion.div>
 
-      {/* Main Grid */}
-      <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Evidence Heatmap */}
+      {/* Charts Section */}
+      <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Verdict Distribution */}
         <motion.div
-          variants={itemVariants}
-          className="lg:col-span-2 p-6 rounded-2xl border"
+          className="p-6 rounded-2xl border"
           style={{
-            backgroundColor: `${COLORS.bg.secondary}80`,
+            backgroundColor: COLORS.bg.secondary,
             borderColor: COLORS.border.light,
           }}
         >
           <h2 style={{ color: COLORS.text.primary }} className="text-xl font-bold mb-6">
-            🔥 Evidence Heatmap
+            Verdict Distribution
           </h2>
-          <div className="space-y-3">
-            {heatmapData.length > 0 ? (
-              heatmapData.slice(0, 8).map((row, idx) => (
-                <div key={idx}>
-                  <div
-                    style={{ color: COLORS.text.secondary }}
-                    className="text-xs font-semibold mb-1"
-                  >
-                    {row.source}
-                  </div>
-                  <div className="flex gap-1">
-                    {row.bars.map((intensity: number, barIdx: number) => {
-                      const colors = [
-                        '#7f1d1d',
-                        '#991b1b',
-                        '#b91c1c',
-                        '#dc2626',
-                        '#ef4444',
-                        '#fca5a5',
-                        '#f59e0b',
-                        '#10b981',
-                        '#059669',
-                        '#047857',
-                      ];
-                      const colorIndex = Math.floor((intensity / 100) * (colors.length - 1));
-                      return (
-                        <div
-                          key={barIdx}
-                          className="flex-1 h-8 rounded-sm border"
-                          style={{
-                            backgroundColor: colors[colorIndex],
-                            borderColor: COLORS.border.light,
-                            opacity: 0.8,
-                          }}
-                          title={`${intensity}%`}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p style={{ color: COLORS.text.tertiary }} className="text-center py-8">
-                No data yet. Analyze claims to populate heatmap.
-              </p>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Source Trust Distribution */}
-        <motion.div
-          variants={itemVariants}
-          className="p-6 rounded-2xl border"
-          style={{
-            backgroundColor: `${COLORS.bg.secondary}80`,
-            borderColor: COLORS.border.light,
-          }}
-        >
-          <h2 style={{ color: COLORS.text.primary }} className="text-xl font-bold mb-4">
-            📊 Source Trust
-          </h2>
-          {sourceDistribution.length > 0 ? (
-            <ResponsiveContainer width="100%" height={250}>
+          {verdictChartData.length > 0 && verdictChartData.some((d) => d.value > 0) ? (
+            <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={sourceDistribution}
+                  data={verdictChartData}
                   cx="50%"
                   cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={2}
+                  labelLine={false}
+                  label={({ name, value }) => `${name}: ${value}`}
+                  outerRadius={80}
+                  fill="#8884d8"
                   dataKey="value"
                 >
-                  {sourceDistribution.map((entry: any, index: number) => (
+                  {verdictChartData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: COLORS.bg.secondary,
+                    backgroundColor: COLORS.bg.tertiary,
                     border: `1px solid ${COLORS.border.light}`,
                     borderRadius: '8px',
+                    color: COLORS.text.primary,
                   }}
-                  labelStyle={{ color: COLORS.text.primary }}
                 />
               </PieChart>
             </ResponsiveContainer>
-          ) : null}
-          <div className="mt-4 space-y-2">
-            {sourceDistribution.map((dist: any, idx: number) => (
-              <div key={idx} className="flex items-center justify-between text-sm">
-                <span style={{ color: COLORS.text.secondary }}>{dist.name}</span>
-                <span style={{ color: dist.color }} className="font-semibold">
-                  {dist.value || 0}
-                </span>
-              </div>
-            ))}
-          </div>
+          ) : (
+            <p style={{ color: COLORS.text.tertiary }} className="text-center py-12">
+              No data yet. Analyze claims to see distribution.
+            </p>
+          )}
+        </motion.div>
+
+        {/* Confidence Distribution */}
+        <motion.div
+          className="p-6 rounded-2xl border"
+          style={{
+            backgroundColor: COLORS.bg.secondary,
+            borderColor: COLORS.border.light,
+          }}
+        >
+          <h2 style={{ color: COLORS.text.primary }} className="text-xl font-bold mb-6">
+            Confidence Distribution
+          </h2>
+          {confidenceChartData.length > 0 && confidenceChartData.some((d) => d.value > 0) ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={confidenceChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border.light} />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fill: COLORS.text.secondary, fontSize: 12 }}
+                  axisLine={{ stroke: COLORS.border.light }}
+                />
+                <YAxis
+                  tick={{ fill: COLORS.text.secondary, fontSize: 12 }}
+                  axisLine={{ stroke: COLORS.border.light }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: COLORS.bg.tertiary,
+                    border: `1px solid ${COLORS.border.light}`,
+                    borderRadius: '8px',
+                    color: COLORS.text.primary,
+                  }}
+                />
+                <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+                  {confidenceChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p style={{ color: COLORS.text.tertiary }} className="text-center py-12">
+              No data yet. Analyze claims to see distribution.
+            </p>
+          )}
         </motion.div>
       </motion.div>
 
-      {/* Confidence Distribution */}
+      {/* Recent Analysis - PRIMARY COMPONENT */}
       <motion.div
         variants={itemVariants}
         className="p-6 rounded-2xl border"
         style={{
-          backgroundColor: `${COLORS.bg.secondary}80`,
+          backgroundColor: COLORS.bg.secondary,
           borderColor: COLORS.border.light,
         }}
       >
         <h2 style={{ color: COLORS.text.primary }} className="text-xl font-bold mb-6">
-          📈 Verdict Confidence Distribution
+          📋 Recent Analyses
         </h2>
-        {confidenceDistribution.length > 0 ? (
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={confidenceDistribution}>
-              <CartesianGrid stroke={COLORS.border.light} />
-              <XAxis stroke={COLORS.text.tertiary} dataKey="name" />
-              <YAxis stroke={COLORS.text.tertiary} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: COLORS.bg.secondary,
-                  border: `1px solid ${COLORS.border.light}`,
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: COLORS.text.primary }}
-              />
-              <Bar dataKey="value" fill={COLORS.verdict.neutral} />
-            </BarChart>
-          </ResponsiveContainer>
-        ) : null}
-      </motion.div>
-
-      {/* Claim Intelligence Panel */}
-      <motion.div
-        variants={itemVariants}
-        className="p-6 rounded-2xl border"
-        style={{
-          backgroundColor: `${COLORS.bg.secondary}80`,
-          borderColor: COLORS.border.light,
-        }}
-      >
-        <h2 style={{ color: COLORS.text.primary }} className="text-xl font-bold mb-6">
-          🧠 Recent Claims Analysis
-        </h2>
-        <div className="space-y-3">
-          {sessions && sessions.length > 0 ? (
-            sessions.slice(0, 5).map((session, idx) => (
+        <div className="space-y-4 max-h-[600px] overflow-y-auto">
+          {analyticsData?.recent_analyses && analyticsData.recent_analyses.length > 0 ? (
+            analyticsData.recent_analyses.map((analysis, index) => (
               <motion.div
-                key={idx}
-                whileHover={{ scale: 1.01 }}
-                className="p-4 rounded-lg border flex items-start justify-between"
+                key={`analysis-${index}`}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className="p-4 rounded-lg border"
                 style={{
-                  backgroundColor: `${COLORS.bg.tertiary}40`,
-                  borderColor: COLORS.border.light,
+                  backgroundColor: COLORS.bg.tertiary,
+                  borderColor: COLORS.border.medium,
                 }}
               >
-                <div className="flex-1">
-                  <p style={{ color: COLORS.text.primary }} className="text-sm font-semibold mb-1">
-                    {session.input_text}
-                  </p>
-                  <div className="flex items-center gap-4 text-xs">
-                    <span
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <p style={{ color: COLORS.text.primary }} className="font-semibold mb-2">
+                      {analysis.claim || 'Untitled Claim'}
+                    </p>
+                    <p style={{ color: COLORS.text.secondary }} className="text-sm mb-3 line-clamp-2">
+                      {analysis.explanation || 'No explanation available'}
+                    </p>
+                    <div className="flex items-center gap-4 text-xs">
+                      <span style={{ color: COLORS.text.tertiary }}>
+                        📅 {new Date(analysis.timestamp || '').toLocaleDateString()} {new Date(analysis.timestamp || '').toLocaleTimeString()}
+                      </span>
+                      {analysis.response_time && (
+                        <span style={{ color: COLORS.text.tertiary }}>
+                          ⏱️ {analysis.response_time.toFixed(2)}s
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Verdict Badge */}
+                  <div
+                    className="px-4 py-3 rounded-lg flex flex-col items-center gap-1 whitespace-nowrap"
+                    style={{
+                      backgroundColor:
+                        analysis.verdict === 'TRUE'
+                          ? `${COLORS.verdict.real}20`
+                          : analysis.verdict === 'FALSE'
+                          ? `${COLORS.verdict.fake}20`
+                          : `${COLORS.verdict.rumor}20`,
+                    }}
+                  >
+                    <p
                       style={{
-                        color: session.verdict === 'TRUE' ? COLORS.verdict.real :
-                               session.verdict === 'FALSE' ? COLORS.verdict.fake :
-                               COLORS.verdict.rumor,
-                        backgroundColor: session.verdict === 'TRUE' ? `${COLORS.verdict.real}20` :
-                                        session.verdict === 'FALSE' ? `${COLORS.verdict.fake}20` :
-                                        `${COLORS.verdict.rumor}20`,
+                        color:
+                          analysis.verdict === 'TRUE'
+                            ? COLORS.verdict.real
+                            : analysis.verdict === 'FALSE'
+                            ? COLORS.verdict.fake
+                            : COLORS.verdict.rumor,
                       }}
-                      className="px-2 py-1 rounded-full font-semibold"
+                      className="font-bold text-sm"
                     >
-                      {session.verdict}
-                    </span>
-                    <span style={{ color: COLORS.text.tertiary }}>
-                      Confidence: {(session.confidence * 100).toFixed(0)}%
-                    </span>
-                    <span style={{ color: COLORS.text.tertiary }}>
-                      Sources: {session.source_count}
-                    </span>
+                      {analysis.verdict || 'UNKNOWN'}
+                    </p>
+                    <p
+                      style={{ color: COLORS.text.secondary }}
+                      className="text-xs"
+                    >
+                      {((analysis.confidence || 0) * 100).toFixed(0)}%
+                    </p>
                   </div>
                 </div>
-                <div
-                  className="w-2 h-2 rounded-full flex-shrink-0 mt-1"
-                  style={{
-                    backgroundColor: session.verdict === 'TRUE' ? COLORS.verdict.real :
-                                    session.verdict === 'FALSE' ? COLORS.verdict.fake :
-                                    COLORS.verdict.rumor,
-                  }}
-                />
               </motion.div>
             ))
           ) : (
-            <p style={{ color: COLORS.text.tertiary }} className="text-center py-8">
-              No recent analyses. Start by analyzing claims in the Dashboard.
+            <p style={{ color: COLORS.text.tertiary }} className="text-center py-12">
+              No analyses yet. Try analyzing a claim!
             </p>
           )}
         </div>
-      </motion.div>
-
-      {/* Top Sources Panel */}
-      <motion.div
-        variants={itemVariants}
-        className="grid grid-cols-1 lg:grid-cols-2 gap-8"
-      >
-        {/* Top Sources */}
-        <motion.div
-          variants={itemVariants}
-          className="p-6 rounded-2xl border"
-          style={{
-            backgroundColor: `${COLORS.bg.secondary}80`,
-            borderColor: COLORS.border.light,
-          }}
-        >
-          <h2 style={{ color: COLORS.text.primary }} className="text-xl font-bold mb-6">
-            🔗 Top Sources
-          </h2>
-          <div className="space-y-3">
-            {topSources.length > 0 ? (
-              topSources.map((source, idx) => (
-                <motion.div
-                  key={idx}
-                  whileHover={{ x: 4 }}
-                  className="p-4 rounded-lg border flex items-between justify-between"
-                  style={{
-                    backgroundColor: `${COLORS.bg.tertiary}40`,
-                    borderColor: COLORS.border.light,
-                  }}
-                >
-                  <div>
-                    <p style={{ color: COLORS.text.primary }} className="font-semibold">
-                      #{idx + 1} {source.name}
-                    </p>
-                    <p style={{ color: COLORS.text.tertiary }} className="text-xs">
-                      Used in {source.frequency} analyses
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p
-                      style={{ color: COLORS.verdict.real }}
-                      className="text-lg font-bold"
-                    >
-                      {source.credibility}%
-                    </p>
-                    <p style={{ color: COLORS.text.tertiary }} className="text-xs">
-                      Credibility
-                    </p>
-                  </div>
-                </motion.div>
-              ))
-            ) : (
-              <p style={{ color: COLORS.text.tertiary }} className="text-center py-8">
-                No sources yet.
-              </p>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Uncertain Claims */}
-        <motion.div
-          variants={itemVariants}
-          className="p-6 rounded-2xl border"
-          style={{
-            backgroundColor: `${COLORS.bg.secondary}80`,
-            borderColor: COLORS.border.light,
-          }}
-        >
-          <h2 style={{ color: COLORS.text.primary }} className="text-xl font-bold mb-6">
-            ⚠️ Uncertain Claims
-          </h2>
-          <div className="space-y-3">
-            {uncertainClaims.length > 0 ? (
-              uncertainClaims.map((claim, idx) => (
-                <motion.div
-                  key={idx}
-                  whileHover={{ scale: 1.01 }}
-                  className="p-4 rounded-lg border"
-                  style={{
-                    backgroundColor: `${COLORS.verdict.rumor}10`,
-                    borderColor: COLORS.verdict.rumor + '40',
-                  }}
-                >
-                  <p style={{ color: COLORS.text.primary }} className="text-sm font-semibold mb-2">
-                    {claim.claim}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span style={{ color: COLORS.verdict.rumor }} className="text-xs font-semibold">
-                      ⚠️ Low Confidence
-                    </span>
-                    <span style={{ color: COLORS.text.tertiary }} className="text-xs">
-                      {(claim.confidence * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                </motion.div>
-              ))
-            ) : (
-              <p style={{ color: COLORS.text.tertiary }} className="text-center py-8">
-                No uncertain claims detected. Great accuracy!
-              </p>
-            )}
-          </div>
-        </motion.div>
       </motion.div>
     </motion.div>
   );

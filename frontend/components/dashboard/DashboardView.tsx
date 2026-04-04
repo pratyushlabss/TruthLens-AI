@@ -63,6 +63,7 @@ export default function DashboardView({ onAnalysisComplete }: DashboardViewProps
     if (!claimText.trim()) return;
 
     setLoading(true);
+    const startTime = Date.now();
     try {
       const formData = new FormData();
       formData.append('text', claimText);
@@ -78,18 +79,24 @@ export default function DashboardView({ onAnalysisComplete }: DashboardViewProps
       }
 
       const data = await response.json();
-      setResult(data);
+      const responseTime = (Date.now() - startTime) / 1000; // Convert to seconds
       
-      // Add to global analysis context
-      addAnalysis(data);
+      // Enrich data with additional fields
+      const enrichedAnalysis = {
+        ...data,
+        claim: claimText,
+        timestamp: new Date().toISOString(),
+        response_time: responseTime,
+        uncertainty_flag: data.verdict === 'UNCERTAIN',
+      };
       
-      // Refresh analytics data
-      if (sessionToken) {
-        await refreshAnalytics(sessionToken);
-      }
+      setResult(enrichedAnalysis);
+      
+      // Add to global analysis context - THIS WILL TRIGGER ANALYTICS REAL-TIME UPDATE
+      addAnalysis(enrichedAnalysis);
       
       // Call callback
-      onAnalysisComplete?.(data);
+      onAnalysisComplete?.(enrichedAnalysis);
     } catch (error) {
       console.error('Analysis error:', error);
       alert('Failed to analyze claim. Please try again.');
@@ -106,6 +113,7 @@ export default function DashboardView({ onAnalysisComplete }: DashboardViewProps
     }
 
     setLoading(true);
+    const startTime = Date.now();
     try {
       const formData = new FormData();
       formData.append('text', claimText);
@@ -122,18 +130,24 @@ export default function DashboardView({ onAnalysisComplete }: DashboardViewProps
       }
 
       const data = await response.json();
-      setResult(data);
+      const responseTime = (Date.now() - startTime) / 1000; // Convert to seconds
       
-      // Add to global analysis context
-      addAnalysis(data);
+      // Enrich data with additional fields
+      const enrichedAnalysis = {
+        ...data,
+        claim: claimText,
+        timestamp: new Date().toISOString(),
+        response_time: responseTime,
+        uncertainty_flag: data.verdict === 'UNCERTAIN',
+      };
       
-      // Refresh analytics data
-      if (sessionToken) {
-        await refreshAnalytics(sessionToken);
-      }
+      setResult(enrichedAnalysis);
+      
+      // Add to global analysis context - THIS WILL TRIGGER ANALYTICS REAL-TIME UPDATE
+      addAnalysis(enrichedAnalysis);
       
       // Call callback
-      onAnalysisComplete?.(data);
+      onAnalysisComplete?.(enrichedAnalysis);
     } catch (error) {
       console.error('Analysis error:', error);
       alert('Failed to analyze image and claim');

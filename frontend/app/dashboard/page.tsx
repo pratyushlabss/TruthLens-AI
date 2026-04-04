@@ -87,7 +87,7 @@ export default function DashboardPage() {
         {view === 'dashboard' ? (
           <DashboardView onAnalysisComplete={handleAnalysisComplete} />
         ) : (
-          <AnalyticsView recentAnalyses={recentAnalyses} />
+          <AnalyticsView />
         )}
       </motion.div>
     </Layout>

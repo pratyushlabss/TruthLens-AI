@@ -94,13 +94,13 @@ export default function AnalysisHistory() {
                         ? `${COLORS.verdict.real}20`
                         : item.verdict === 'FALSE'
                         ? `${COLORS.verdict.fake}20`
-                        : `${COLORS.verdict.mixed}20`,
+                        : `${COLORS.verdict.rumor}20`,
                     color:
                       item.verdict === 'TRUE'
                         ? COLORS.verdict.real
                         : item.verdict === 'FALSE'
                         ? COLORS.verdict.fake
-                        : COLORS.verdict.mixed,
+                        : COLORS.verdict.rumor,
                   }}
                 >
                   {item.verdict}

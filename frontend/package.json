@@ -39,6 +39,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.10.6",
+    "@types/papaparse": "^5.5.2",
     "eslint": "^8.55.0",
     "eslint-config-next": "^14.1.0"
   }
