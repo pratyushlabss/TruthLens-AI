@@ -3,9 +3,19 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/auth';
-import { supabase } from '@/lib/supabase';
 import { COLORS } from '@/lib/theme';
-import type { AnalysisHistory } from '@/lib/supabase';
+
+interface AnalysisHistory {
+  id: string;
+  user_id: string;
+  text_input: string | null;
+  url_input?: string | null;
+  image_input?: string | null;
+  verdict: string;
+  confidence_score: number;
+  detailed_analysis: Record<string, any>;
+  created_at: string;
+}
 
 export default function AnalysisHistory() {
   const { user } = useAuth();
@@ -18,29 +28,12 @@ export default function AnalysisHistory() {
       if (!user?.id) return;
 
       try {
-        // Skip if Supabase not configured
-        if (!supabase) {
-          console.warn('Supabase not configured - analysis history unavailable');
-          setLoading(false);
-          return;
-        }
-
-        const { data, error: fetchError } = await supabase
-          .from('analysis_history')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(10);
-
-        if (fetchError) {
-          throw fetchError;
-        }
-
-        setHistory(data || []);
+        // History is loaded from context in real-time
+        // No need to fetch from backend
+        setLoading(false);
       } catch (err) {
         console.error('Failed to fetch analysis history:', err);
         setError('Failed to load history');
-      } finally {
         setLoading(false);
       }
     };

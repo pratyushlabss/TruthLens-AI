@@ -5,7 +5,6 @@ import { motion } from 'framer-motion';
 import Layout from '@/components/layout/Layout';
 import { COLORS } from '@/lib/theme';
 import { useAuth } from '@/lib/auth';
-import { supabase } from '@/lib/supabase';
 import DashboardView from '@/components/dashboard/DashboardView';
 import AnalyticsView from '@/components/dashboard/AnalyticsView';
 import ToggleTabs from '@/components/dashboard/ToggleTabs';

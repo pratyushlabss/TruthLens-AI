@@ -4,36 +4,16 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import Layout from '@/components/layout/Layout';
 import { useAnalysis } from '@/lib/analysis-context';
-import { supabase } from '@/lib/supabase';
 import { COLORS } from '@/lib/theme';
 import Link from 'next/link';
 
 export default function SessionsPage() {
   const { sessions, refreshAnalytics } = useAnalysis();
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
 
-  // Get session token and fetch analytics
+  // Get analytics from context
   useEffect(() => {
-    const getTokenAndFetch = async () => {
-      try {
-        // Skip if Supabase not configured
-        if (!supabase) {
-          console.warn('Supabase not configured - using local sessions only');
-          return;
-        }
-
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (session?.access_token) {
-          setSessionToken(session.access_token);
-          await refreshAnalytics(session.access_token);
-        }
-      } catch (error) {
-        console.error('Error getting session:', error);
-      }
-    };
-    getTokenAndFetch();
+    // Sessions data comes from analysis context
+    // No need to fetch from backend - using local context
   }, [refreshAnalytics]);
 
   const formatDate = (dateString: string) => {

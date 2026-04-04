@@ -5,7 +5,6 @@ import { motion } from 'framer-motion';
 import { COLORS } from '@/lib/theme';
 import { useAnalysis } from '@/lib/analysis-context';
 import { useAuth } from '@/lib/auth';
-import { supabase } from '@/lib/supabase';
 import VerdictCard from '@/components/analysis/VerdictCard';
 import KeySignalsPanel from '@/components/analysis/KeySignalsPanel';
 import EvidenceSourcesPanel from '@/components/analysis/EvidenceSourcesPanel';
@@ -35,35 +34,11 @@ export default function DashboardView({ onAnalysisComplete }: DashboardViewProps
   const [claimText, setClaimText] = useState('');
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Global analysis context
   const { addAnalysis, refreshAnalytics } = useAnalysis();
   const { user } = useAuth();
-
-  // Get session token
-  React.useEffect(() => {
-    const getSessionToken = async () => {
-      try {
-        // Skip if Supabase not configured
-        if (!supabase) {
-          console.warn('Supabase not configured - proceeding without session token');
-          return;
-        }
-
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (session?.access_token) {
-          setSessionToken(session.access_token);
-        }
-      } catch (error) {
-        console.error('Error getting session:', error);
-      }
-    };
-    getSessionToken();
-  }, []);
 
   const handleAnalyze = async () => {
     if (!claimText.trim()) return;
@@ -77,7 +52,6 @@ export default function DashboardView({ onAnalysisComplete }: DashboardViewProps
       const response = await fetch('/api/analyze', {
         method: 'POST',
         body: formData,
-        headers: sessionToken ? { 'Authorization': `Bearer ${sessionToken}` } : {},
       });
 
       if (!response.ok) {
@@ -128,7 +102,6 @@ export default function DashboardView({ onAnalysisComplete }: DashboardViewProps
       const response = await fetch('/api/analyze', {
         method: 'POST',
         body: formData,
-        headers: sessionToken ? { 'Authorization': `Bearer ${sessionToken}` } : {},
       });
 
       if (!response.ok) {
