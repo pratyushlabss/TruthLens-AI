@@ -1,53 +1,14 @@
 {
-  "buildCommand": "npm install && npm run build",
+  "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "framework": "nextjs",
   "nodeVersion": "18.x",
-  "env": {
-    "HF_TOKEN": {
-      "description": "Hugging Face API token for RoBERTa and BLIP image captioning models",
-      "required": true
-    },
-    "PINECONE_API_KEY": {
-      "description": "Pinecone vector database API key for evidence retrieval",
-      "required": true
-    },
-    "PINECONE_INDEX_NAME": {
-      "description": "Pinecone index name (default: truthlens-evidence)",
-      "required": false
-    },
-    "SCRAPER_API_KEY": {
-      "description": "WebScraping.ai API key for URL content extraction",
-      "required": true
-    },
-    "NEXT_PUBLIC_API_URL": {
-      "description": "Public API URL for frontend (optional, defaults to current domain)",
-      "required": false
-    }
-  },
   "buildOutputDirectory": ".next",
   "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1",
-      "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-      "headers": {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization"
-      }
-    },
     {
       "src": "/(.*)",
       "dest": "/"
     }
-  ],
-  "functions": {
-    "api/analyze.ts": {
-      "maxDuration": 60,
-      "memory": 3008
-    }
-  },
-  "ignoreCommand": "npx vercel-ignore"
+  ]
 }
