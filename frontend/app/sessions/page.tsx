@@ -16,6 +16,12 @@ export default function SessionsPage() {
   useEffect(() => {
     const getTokenAndFetch = async () => {
       try {
+        // Skip if Supabase not configured
+        if (!supabase) {
+          console.warn('Supabase not configured - using local sessions only');
+          return;
+        }
+
         const {
           data: { session },
         } = await supabase.auth.getSession();

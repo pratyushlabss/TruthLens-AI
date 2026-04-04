@@ -46,6 +46,12 @@ export default function DashboardView({ onAnalysisComplete }: DashboardViewProps
   React.useEffect(() => {
     const getSessionToken = async () => {
       try {
+        // Skip if Supabase not configured
+        if (!supabase) {
+          console.warn('Supabase not configured - proceeding without session token');
+          return;
+        }
+
         const {
           data: { session },
         } = await supabase.auth.getSession();

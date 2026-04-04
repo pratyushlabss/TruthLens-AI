@@ -18,6 +18,13 @@ export default function AnalysisHistory() {
       if (!user?.id) return;
 
       try {
+        // Skip if Supabase not configured
+        if (!supabase) {
+          console.warn('Supabase not configured - analysis history unavailable');
+          setLoading(false);
+          return;
+        }
+
         const { data, error: fetchError } = await supabase
           .from('analysis_history')
           .select('*')
