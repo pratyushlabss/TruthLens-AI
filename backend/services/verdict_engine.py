@@ -67,7 +67,6 @@ class VerdictEngine:
             logger.warning("[FIX3] No evidence - returning uncertain with fallback reasoning")
             return self._uncertain_verdict(
                 reason="No external evidence available",
-                nlp_score=nlp_score,
                 claim=claim,
                 is_fallback=True
             )
@@ -80,7 +79,6 @@ class VerdictEngine:
             logger.warning("[FIX3] Only fallback evidence - returning uncertain")
             return self._uncertain_verdict(
                 reason="Only system-generated fallback evidence available",
-                nlp_score=nlp_score,
                 claim=claim,
                 is_fallback=True
             )
@@ -104,7 +102,7 @@ class VerdictEngine:
     def _analyze_evidence(
         self,
         evidence_list: List[Dict],
-        nlp_score: float,
+        nlp_score: float,  # kept for API compatibility
         claim: str
     ) -> Dict:
         """
@@ -149,7 +147,6 @@ class VerdictEngine:
         if total_score == 0:
             return self._uncertain_verdict(
                 reason="Evidence available but inconclusive",
-                nlp_score=nlp_score,
                 claim=claim
             )
         
@@ -180,36 +177,34 @@ class VerdictEngine:
                 verdict_type = VerdictType.UNCERTAIN
                 confidence = 0.5
         
-        # Generate reasoning
-        reasoning = self._generate_reasoning(
+        explanation, reasoning = self._generate_explanations(
             verdict_type=verdict_type,
+            evidence_list=evidence_list,
             supports_count=supports_count,
             refutes_count=refutes_count,
             neutral_count=neutral_count,
             average_credibility=average_credibility,
-            nlp_score=nlp_score,
-            claim=claim
+            claim=claim,
         )
-        
+
         logger.info(f"[VERDICT] Final verdict: {verdict_type.value} (confidence: {confidence:.2f})")
-        
+
         return {
             "verdict": verdict_type.value,
             "confidence": min(max(confidence, 0.1), 0.95),
+            "explanation": explanation,
             "reasoning": reasoning,
-            "is_fallback": False
+            "signals": self._build_signals(verdict_type, evidence_list, supports_count, refutes_count),
+            "is_fallback": False,
         }
     
     def _uncertain_verdict(
         self,
         reason: str = "No evidence found",
-        nlp_score: float = 0.5,
         claim: str = "",
         is_fallback: bool = False
     ) -> Dict:
-        """
-        === FIX 3: DETAILED REASONING FOR UNCERTAIN VERDICT ===
-        Generate detailed step-by-step reasoning for uncertain verdict.
+        """Generate a concise uncertain verdict with explanation and signals.
         
         Args:
             reason: why uncertain
@@ -220,160 +215,145 @@ class VerdictEngine:
         Returns:
             Detailed uncertain verdict
         """
-        nlp_confidence = abs(nlp_score - 0.5) * 2 * 100
-        nlp_indicator = "credibility concerns" if nlp_score < 0.5 else "plausible indicators"
-        
-        detailed_reasoning = f"""VERDICT ANALYSIS: UNCERTAIN
+        claim_short = claim[:80] + ("…" if len(claim) > 80 else "")
+        explanation = (
+            f"The claim could not be definitively verified or falsified. "
+            f"{'Only system-generated evidence was available.' if is_fallback else reason}"
+        )
+        reasoning = (
+            f"Insufficient reliable evidence was found for \"{claim_short}\". "
+            f"{'Search engines were unavailable; only internal analysis was performed.' if is_fallback else reason + ' Consider consulting additional authoritative sources.'}"
+        )
+        signals = [
+            "⚠️ Verdict: UNCERTAIN",
+            f"⚠️ {'No external sources available' if is_fallback else 'Insufficient evidence'}",
+            "💡 Recommend cross-checking with authoritative sources",
+        ]
 
-Reason for Uncertainty:
-{reason}
-
-Detailed Analysis:
-1. Evidence Assessment
-   - Type: {'Fallback/System-generated' if is_fallback else 'External sources'}
-   - Finding: Insufficient reliable sources to determine verdict
-   - Status: {'Limited availability' if not claim else f'Unable to verify: "{claim[:60]}"'}
-
-2. NLP Language Analysis
-   - System detected {nlp_indicator} in the claim text
-   - Language credibility score: {nlp_confidence:.0f}%
-   - Linguistic confidence: {'Low' if nlp_confidence < 30 else 'Moderate' if nlp_confidence < 70 else 'High'}
-
-3. Verification Status
-   - External source verification: {'Not possible' if is_fallback else 'Incomplete'}
-   - Claim specificity: {'High (may require specialized sources)' if len(claim.split()) > 5 else 'Moderate'}
-   - Temporal factor: {'Recent/Breaking' if nlp_score > 0.7 else 'Established'}
-
-4. Evidence Availability
-   - Sources found: {'System fallback only - search engines unavailable' if is_fallback else 'Limited'}
-   - Credibility sources: {'None (system analysis only)' if is_fallback else 'Mixed'}
-   - Coverage: Limited coverage available
-
-System Conclusion:
-The claim cannot be definitively verified or falsified based on:
-- Insufficient supporting or refuting evidence
-- Possible search/source availability limitations
-- Claim specificity or recency
-
-Recommendations:
-1. Seek additional verified sources from domain experts
-2. Monitor for updates as more evidence becomes available
-3. Consider consulting fact-checking organizations specialized in this domain
-4. Re-verify the claim as additional information emerges
-
-Next Steps:
-- Try searching for highly specific terms related to the claim
-- Look for expert analyses or official statements
-- Check date ranges to ensure current information
-- Cross-reference multiple independent sources
-
-Confidence Level: LOW (30%)
-Reliability: System analysis with limited external verification"""
-        
         return {
             "verdict": "UNCERTAIN",
             "confidence": 0.3,
-            "reasoning": detailed_reasoning.strip(),
-            "is_fallback": is_fallback
+            "explanation": explanation,
+            "reasoning": reasoning,
+            "signals": signals,
+            "is_fallback": is_fallback,
         }
     
-    def _generate_reasoning(
+    # ------------------------------------------------------------------
+    # Explanation + signal generation
+    # ------------------------------------------------------------------
+
+    def _source_names(self, evidence_list: List[Dict], stance_filter: str = None) -> List[str]:
+        """Return unique, human-readable source names from evidence."""
+        seen, names = set(), []
+        for ev in evidence_list:
+            if ev.get("is_fallback"):
+                continue
+            if stance_filter and ev.get("stance") != stance_filter:
+                continue
+            src = ev.get("source", "")
+            if src and src not in seen:
+                seen.add(src)
+                names.append(src)
+        return names[:4]
+
+    def _generate_explanations(
         self,
         verdict_type: VerdictType,
+        evidence_list: List[Dict],
         supports_count: float,
         refutes_count: float,
         neutral_count: float,
         average_credibility: float,
-        nlp_score: float,
-        claim: str
-    ) -> str:
-        """
-        Generate detailed reasoning for verdict.
-        
-        Args:
-            verdict_type: The verdict type (TRUE/FALSE/UNCERTAIN)
-            supports_count: Number of supporting sources
-            refutes_count: Number of refuting sources
-            neutral_count: Number of neutral sources
-            average_credibility: Average source credibility
-            nlp_score: NLP classification score
-            claim: The claim
-            
-        Returns:
-            Detailed reasoning text
-        """
-        total_sources = supports_count + refutes_count + neutral_count
-        
+        claim: str,
+    ):
+        """Return (explanation, reasoning) as a concise sentence + short paragraph."""
+        total = supports_count + refutes_count + neutral_count or 1.0
+        real = [e for e in evidence_list if not e.get("is_fallback")]
+        real_count = len(real)
+        cred_pct = int(average_credibility * 100)
+        claim_short = claim[:80] + ("…" if len(claim) > 80 else "")
+
         if verdict_type == VerdictType.TRUE:
-            reasoning = f"""VERDICT ANALYSIS: TRUE
+            support_src = self._source_names(evidence_list, "SUPPORTS")
+            src_str = (", ".join(support_src[:3]) + " and others") if support_src else "multiple sources"
+            explanation = (
+                f"The claim appears to be supported by available evidence. "
+                f"{int(supports_count / total * 100)}% of sources support it, "
+                f"with an average credibility of {cred_pct}%."
+            )
+            reasoning = (
+                f"Analysis of {real_count} source(s) found that {src_str} support "
+                f"the claim \"{claim_short}\". "
+                f"Supporting evidence outweighs refuting evidence "
+                f"({supports_count:.1f} vs {refutes_count:.1f} credibility-weighted units). "
+                f"Sources averaged {cred_pct}% credibility."
+            )
 
-Evidence Summary:
-- Supporting sources: {supports_count:.1f} credibility units
-- Refuting sources: {refutes_count:.1f} credibility units
-- Neutral sources: {neutral_count:.1f} credibility units
-- Average source credibility: {average_credibility:.1%}
-
-Analysis:
-The claim "{claim[:80]}" appears to be TRUE based on:
-1. Preponderance of supporting evidence ({supports_count:.0f} vs {refutes_count:.0f})
-2. High average credibility of sources ({average_credibility:.0%})
-3. Consistent support across multiple independent sources
-4. NLP analysis supports claim plausibility
-
-Confidence Assessment:
-- Evidence weight: {(supports_count/max(total_sources,1)):.0%} support
-- Source reliability: {average_credibility:.0%} average credibility
-- Overall confidence: HIGH
-
-Recommendation: The claim is supported by available evidence."""
-        
         elif verdict_type == VerdictType.FALSE:
-            reasoning = f"""VERDICT ANALYSIS: FALSE
+            refute_src = self._source_names(evidence_list, "REFUTES")
+            src_str = (", ".join(refute_src[:3]) + " and others") if refute_src else "multiple sources"
+            explanation = (
+                f"The claim appears to be false or misleading. "
+                f"{int(refutes_count / total * 100)}% of sources contradict it, "
+                f"with an average credibility of {cred_pct}%."
+            )
+            reasoning = (
+                f"Analysis of {real_count} source(s) found that {src_str} contradict "
+                f"the claim \"{claim_short}\". "
+                f"Refuting evidence outweighs supporting evidence "
+                f"({refutes_count:.1f} vs {supports_count:.1f} credibility-weighted units). "
+                f"Sources averaged {cred_pct}% credibility."
+            )
 
-Evidence Summary:
-- Supporting sources: {supports_count:.1f} credibility units
-- Refuting sources: {refutes_count:.1f} credibility units
-- Neutral sources: {neutral_count:.1f} credibility units
-- Average source credibility: {average_credibility:.1%}
-
-Analysis:
-The claim "{claim[:80]}" appears to be FALSE based on:
-1. Preponderance of refuting evidence ({refutes_count:.0f} vs {supports_count:.0f})
-2. Significant source credibility ({average_credibility:.0%})
-3. Direct contradictions from multiple sources
-4. NLP analysis indicates linguistic inconsistencies
-
-Confidence Assessment:
-- Evidence weight: {(refutes_count/max(total_sources,1)):.0%} contradiction
-- Source reliability: {average_credibility:.0%} average credibility
-- Overall confidence: HIGH
-
-Recommendation: The claim is contradicted by available evidence."""
-        
         else:
-            reasoning = f"""VERDICT ANALYSIS: UNCERTAIN
+            explanation = (
+                f"The evidence is mixed or insufficient to reach a definitive verdict. "
+                f"Supporting and refuting sources are roughly balanced."
+            )
+            reasoning = (
+                f"Analysis of {real_count} source(s) for the claim \"{claim_short}\" "
+                f"found no clear consensus: {supports_count:.1f} credibility units support it, "
+                f"{refutes_count:.1f} contradict it, and {neutral_count:.1f} are neutral. "
+                f"Seek additional authoritative sources before accepting or rejecting this claim."
+            )
 
-Evidence Summary:
-- Supporting evidence: {supports_count:.1f} units
-- Refuting evidence: {refutes_count:.1f} units
-- Neutral evidence: {neutral_count:.1f} units
-- Average credibility: {average_credibility:.0%}
+        return explanation, reasoning
 
-Analysis:
-The claim "{claim[:80]}" is UNCERTAIN because:
-1. Mixed evidence - both supporting and refuting sources present
-2. Evidence is insufficient for definitive conclusion
-3. Source credibility is moderate ({average_credibility:.0%})
-4. No clear preponderance of evidence in either direction
+    def _build_signals(
+        self,
+        verdict_type: VerdictType,
+        evidence_list: List[Dict],
+        supports_count: float,
+        refutes_count: float,
+    ) -> List[str]:
+        """Build a short list of key signals shown in the UI."""
+        signals = []
+        real = [e for e in evidence_list if not e.get("is_fallback")]
 
-Confidence Assessment:
-- Balanced evidence: {supports_count:.0f} support vs {refutes_count:.0f} refute
-- Credibility average: {average_credibility:.0%}
-- Overall confidence: MODERATE
+        if verdict_type == VerdictType.TRUE:
+            signals.append(f"✅ {len(real)} source(s) analyzed")
+            signals.append(f"✅ Supporting evidence weight: {supports_count:.1f}")
+            if refutes_count > 0:
+                signals.append(f"⚠️ Some refuting evidence present: {refutes_count:.1f}")
+        elif verdict_type == VerdictType.FALSE:
+            signals.append(f"🔍 {len(real)} source(s) analyzed")
+            signals.append(f"❌ Refuting evidence weight: {refutes_count:.1f}")
+            if supports_count > 0:
+                signals.append(f"⚠️ Some supporting evidence present: {supports_count:.1f}")
+        else:
+            signals.append(f"🔍 {len(real)} source(s) analyzed")
+            signals.append("⚠️ Mixed or insufficient evidence")
 
-Recommendation: Seek additional verification before acceptance."""
-        
-        return reasoning.strip()
+        # Add top-credibility source names
+        for ev in sorted(real, key=lambda e: e.get("credibility", 0), reverse=True)[:2]:
+            src = ev.get("source", "")
+            stance = ev.get("stance", "NEUTRAL")
+            icon = "✅" if stance == "SUPPORTS" else ("❌" if stance == "REFUTES" else "➖")
+            if src:
+                signals.append(f"{icon} {src} — {stance.lower()}")
+
+        return signals
 
     # ------------------------------------------------------------------
     # Optional NLI refinement helpers

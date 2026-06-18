@@ -5,6 +5,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import Optional
+import csv
+import os
+import logging
 
 from database.postgres import get_db
 from database.models import User
@@ -16,7 +19,83 @@ from utils.security import (
     get_token_from_header
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+# ---------------------------------------------------------------------------
+# CSV Fast-Pass — credentials stored server-side only (never exposed publicly)
+# ---------------------------------------------------------------------------
+
+_CSV_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "users.csv")
+
+
+def _load_csv_users() -> list:
+    """Load hashed-password user records from backend/data/users.csv."""
+    path = os.path.normpath(_CSV_PATH)
+    if not os.path.exists(path):
+        logger.warning(f"[CSV-AUTH] users.csv not found at {path}")
+        return []
+    with open(path, newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+class CSVLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class CSVLoginResponse(BaseModel):
+    success: bool
+    user_id: str = ""
+    email: str = ""
+    username: str = ""
+    created_at: str = ""
+    message: str = ""
+
+
+@router.post("/csv-login", response_model=CSVLoginResponse)
+async def csv_login(request: CSVLoginRequest):
+    """
+    Fast-pass login using the server-side hashed-password CSV.
+    Credentials are never exposed publicly — the CSV lives in backend/data/.
+    """
+    import bcrypt
+
+    if not request.email or not request.password:
+        raise HTTPException(status_code=400, detail="Email and password required")
+
+    users = _load_csv_users()
+    if not users:
+        raise HTTPException(status_code=503, detail="User store unavailable")
+
+    for row in users:
+        if row.get("email", "").strip().lower() == request.email.strip().lower():
+            stored_hash = row.get("password_hash", "")
+            try:
+                match = bcrypt.checkpw(
+                    request.password.encode("utf-8"),
+                    stored_hash.encode("utf-8"),
+                )
+            except Exception:
+                match = False
+
+            if match:
+                logger.info(f"[CSV-AUTH] Successful login for {request.email}")
+                return CSVLoginResponse(
+                    success=True,
+                    user_id=f"csv-{request.email}",
+                    email=row["email"],
+                    username=row.get("username", ""),
+                    created_at=row.get("created_at", ""),
+                    message="Login successful",
+                )
+            else:
+                logger.warning(f"[CSV-AUTH] Wrong password for {request.email}")
+                raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    logger.warning(f"[CSV-AUTH] User not found: {request.email}")
+    raise HTTPException(status_code=401, detail="Invalid credentials")
 
 
 # Request/Response Models

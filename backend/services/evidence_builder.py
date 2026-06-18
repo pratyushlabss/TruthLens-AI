@@ -1,6 +1,9 @@
 """
-Evidence Builder - FIXED with guaranteed non-empty evidence.
-Converts raw articles into structured evidence with stance detection.
+Evidence Builder - converts raw articles into structured evidence.
+Semantic similarity uses sentence-transformers when available, with a
+keyword-based Jaccard fallback.  Stance detection uses a lightweight
+cross-encoder NLI model (cross-encoder/nli-MiniLM2-L6-H768) when
+available, falling back to keyword heuristics.
 """
 
 import logging
@@ -8,6 +11,50 @@ from typing import List, Dict, Optional
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Module-level lazy-loaded models (shared across all EvidenceBuilder instances)
+# ---------------------------------------------------------------------------
+_semantic_model = None   # SentenceTransformer for embedding similarity
+_nli_pipeline = None     # cross-encoder for stance detection
+_nli_attempted = False   # avoid retrying a failed load
+
+
+def _get_semantic_model():
+    """Return a shared SentenceTransformer, loading it once."""
+    global _semantic_model
+    if _semantic_model is not None:
+        return _semantic_model
+    try:
+        from sentence_transformers import SentenceTransformer
+        _semantic_model = SentenceTransformer("all-MiniLM-L6-v2")
+        logger.info("[EVIDENCE] ✅ Loaded SentenceTransformer for semantic similarity")
+    except Exception as e:
+        logger.warning(f"[EVIDENCE] SentenceTransformer unavailable: {e}")
+        _semantic_model = None
+    return _semantic_model
+
+
+def _get_nli_pipeline():
+    """Return a shared cross-encoder NLI pipeline, loading it once."""
+    global _nli_pipeline, _nli_attempted
+    if _nli_attempted:
+        return _nli_pipeline
+    _nli_attempted = True
+    try:
+        from transformers import pipeline as hf_pipeline
+        # Small, fast NLI model (~85 MB) — free from HuggingFace
+        _nli_pipeline = hf_pipeline(
+            "text-classification",
+            model="cross-encoder/nli-MiniLM2-L6-H768",
+            device=-1,           # CPU
+            top_k=None,          # return scores for all labels
+        )
+        logger.info("[EVIDENCE] ✅ Loaded cross-encoder NLI for stance detection")
+    except Exception as e:
+        logger.warning(f"[EVIDENCE] Cross-encoder NLI unavailable: {e}")
+        _nli_pipeline = None
+    return _nli_pipeline
 
 
 class EvidenceBuilder:
@@ -51,9 +98,7 @@ class EvidenceBuilder:
         if raw_articles:
             for article in raw_articles:
                 try:
-                    evidence_item = self._build_evidence_item(
-                        article, claim, nlp_score
-                    )
+                    evidence_item = self._build_evidence_item(article, claim)
                     if evidence_item:
                         evidence_list.append(evidence_item)
                 except Exception as e:
@@ -90,196 +135,318 @@ class EvidenceBuilder:
         logger.info(f"[FIX2] Returning {len(evidence_list)} evidence items")
         return evidence_list
     
-    def _build_evidence_item(
-        self,
-        article: Dict,
-        claim: str,
-        nlp_score: float
-    ) -> Optional[Dict]:
-        """
-        Build a single evidence item from an article with semantic analysis.
-        
-        Args:
-            article: Raw article data
-            claim: The claim being analyzed
-            nlp_score: NLP classification score
-            
-        Returns:
-            Structured evidence item
-        """
+    def _build_evidence_item(self, article: Dict, claim: str) -> Optional[Dict]:
+        """Build a single evidence item from an article with semantic analysis."""
         try:
-            # Compute semantic similarity between claim and article
             article_text = article.get("text", "") or article.get("snippet", "")
-            semantic_similarity = self._compute_semantic_similarity(claim, article_text)
-            
-            logger.info(f"[SEMANTIC] Similarity: {semantic_similarity:.2f} for {article.get('source', 'Unknown')}")
-            
-            # Determine stance based on article content
-            # Simple strategy: check for contradictory language
-            
-            if semantic_similarity < 0.6:
-                stance = "NEUTRAL"
-                logger.info(f"[STANCE] NEUTRAL: low_similarity={semantic_similarity:.3f}")
-            else:
-                # High similarity - check if article refutes or supports
-                article_lower = article_text.lower()
-                
-                # Strong refutation patterns
-                refuting_patterns = [
-                    'does not ', 'do not ', 'is not ', 'are not ', 'was not ', 'were not ',
-                    'cannot ', 'can not ', 'no evidence ', 'false ', 'incorrect ',
-                    'deny ', 'denied ', 'actually ', 'orbits the ', 'orbits around',
-                    'wrong ', 'debunk', 'untrue ', 'myth', 'misconception',
-                    'contrary ', 'contradicts ', 'opposite', 'refute ', 'disprove',
-                    # Targeted phrases for common misinformation about Earth shape
-                    "isn't flat", 'is not flat', 'not flat'
-                ]
-                
-                has_refutation = any(pat in article_lower for pat in refuting_patterns)
-                
-                if has_refutation:
-                    stance = "REFUTES"
-                    logger.info(f"[STANCE] REFUTES: has_refutation=True, sim={semantic_similarity:.3f}")
-                else:
-                    stance = "SUPPORTS"
-                    logger.info(f"[STANCE] SUPPORTS: has_refutation=False, sim={semantic_similarity:.3f}")
-            
-            # Get credibility
+            norm_claim = self._normalize_claim(claim)
+            semantic_similarity = self._compute_semantic_similarity(norm_claim, article_text)
+            stance = self._determine_stance(claim, article_text, semantic_similarity)
+
+            logger.info(
+                f"[EVIDENCE] {article.get('source', 'Unknown')[:30]} → "
+                f"{stance} (sim:{semantic_similarity:.2f})"
+            )
+
             credibility = article.get("credibility", 0.5)
             is_fallback = article.get("is_fallback", False)
-            
-            evidence_item = {
+
+            return {
                 "source": article.get("source", "Unknown Source"),
                 "stance": stance,
                 "credibility": credibility,
                 "credibility_reason": (
-                    "From external source" if not is_fallback 
+                    "From external source" if not is_fallback
                     else "System-generated fallback"
                 ),
                 "snippet": article.get("snippet", article.get("title", "No text")),
-                "text": article.get("text", ""),
+                "text": article_text,
                 "url": article.get("url", "unknown"),
                 "is_fallback": is_fallback,
-                "stance_confidence": semantic_similarity,  # Use semantic similarity as confidence
+                "stance_confidence": semantic_similarity,
                 "semantic_similarity": semantic_similarity,
-                "retrieved_at": article.get(
-                    "retrieved_at",
-                    datetime.now().isoformat()
-                )
+                "retrieved_at": article.get("retrieved_at", datetime.now().isoformat()),
             }
-            
-            logger.info(f"[EVIDENCE] {article.get('source', 'Unknown')} → {stance} (sim:{semantic_similarity:.2f})")
-            
-            return evidence_item
-        
+
         except Exception as e:
-            logger.warning(f"[FIX2] Error in _build_evidence_item: {e}")
+            logger.warning(f"[EVIDENCE] Error building item: {e}")
             return None
+
+    @staticmethod
+    def _normalize_claim(claim: str) -> str:
+        """
+        Normalise claim text before NLI/embedding processing.
+        ALL-CAPS input degrades model quality — convert to sentence case.
+        """
+        if claim == claim.upper() and len(claim) > 3:
+            return claim.capitalize()
+        return claim
+
+    def _select_nli_context(self, article_text: str, norm_claim: str) -> str:
+        """
+        Pick the most claim-relevant sentences from the article for NLI.
+
+        Using article[:512] is fragile — for e.g. an assassination-attempt
+        article the first sentences describe the shooting, not the survival.
+        Selecting semantically-closest sentences gives the NLI model the
+        most on-topic snippet.
+        """
+        import re
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", article_text) if len(s.strip()) > 20]
+        if len(sentences) <= 3:
+            return article_text[:512]
+
+        model = _get_semantic_model()
+        if model is None:
+            return article_text[:512]
+
+        try:
+            from sklearn.metrics.pairwise import cosine_similarity
+            import re as _re
+            claim_emb = model.encode(norm_claim).reshape(1, -1)
+            candidates = sentences[:40]  # cap to avoid large batches
+
+            # Pre-process candidates: if a sentence opens with a quoted phrase
+            # that restates the claim (common in debunking/definition articles),
+            # strip the quote so NLI sees the editorial assertion, not the claim.
+            # e.g. (curly-quote)”The Moon is made of green cheese”(curly-quote)
+            #      is a statement referring to a fanciful belief...
+            #   -> is a statement referring to a fanciful belief...
+            # Use code-point sets to avoid literal Unicode chars in source.
+            _OPEN_CP = {0x22, 0x27, 0x60, 0x201C, 0x201E, 0x2018}
+            _CLOSE_CP = {0x22, 0x27, 0x60, 0x201D, 0x201F, 0x2019}
+            cleaned = []
+            for sent in candidates:
+                if sent and ord(sent[0]) in _OPEN_CP:
+                    end = next(
+                        (i for i, ch in enumerate(sent[1:], 1) if ord(ch) in _CLOSE_CP),
+                        -1,
+                    )
+                    stripped = sent[end + 1:].strip() if end > 0 else sent
+                    cleaned.append(stripped if len(stripped) > 20 else sent)
+                else:
+                    cleaned.append(sent)
+
+            sent_embs = model.encode(cleaned)
+            sims = cosine_similarity(claim_emb, sent_embs)[0]
+            # Use the single highest-similarity sentence.
+            # Multi-sentence context causes NLI errors when secondary sentences
+            # contain contradictory framing (e.g. "was shot" alongside "survived").
+            best_idx = int(sims.argmax())
+            return cleaned[best_idx][:512]
+        except Exception:
+            return article_text[:512]
+
+    def _determine_stance(
+        self, claim: str, article_text: str, semantic_similarity: float
+    ) -> str:
+        """
+        Determine stance of an article toward the claim.
+
+        Priority:
+        1. Cross-encoder NLI model — correct text_pair API call
+        2. Keyword-only fallback (very conservative, high threshold)
+        3. Default NEUTRAL when uncertain
+        """
+        # Low similarity → article is off-topic, skip NLI entirely
+        if not article_text or semantic_similarity < 0.60:
+            return "NEUTRAL"
+
+        norm_claim = self._normalize_claim(claim)
+
+        # ── Method 1: NLI cross-encoder ──────────────────────────────────────
+        # Correct call: nli(premise, text_pair=hypothesis)
+        # NOT: nli("premise [SEP] hypothesis") — that scrambles scores
+        nli = _get_nli_pipeline()
+        if nli is not None:
+            try:
+                # Select most relevant sentences — avoids NLI being misled by
+                # article introductions that describe context rather than resolution
+                premise = self._select_nli_context(article_text, norm_claim)
+                premise_lower = premise.lower()
+
+                # Pre-NLI check: definitional/debunking sentences cannot reliably
+                # indicate an article's stance. Examples:
+                #   '"The Moon is made of green cheese" is a statement referring
+                #    to a fanciful belief...'
+                #   'Flat Earth is an archaic and scientifically disproven conception'
+                # NLI will latch on to the claim words and give wrong SUPPORTS/REFUTES.
+                # Return NEUTRAL immediately so these don't pollute the verdict.
+                debunking_context = any(w in premise_lower for w in [
+                    "fanciful belief", "popular myth", "is a myth", "is a legend",
+                    "is a statement referring", "is an idiom", "is a saying",
+                    "is a proverb", "folk belief", "misconception that",
+                    "disproven conception", "archaic", "pseudoscience",
+                    "conspiracy theory", "false belief", "unproven claim",
+                ])
+                if debunking_context:
+                    logger.info("[STANCE/NLI] Definitional/debunking sentence → NEUTRAL")
+                    return "NEUTRAL"
+
+                # Safety override: if the premise explicitly says the subject
+                # "survived" or is "currently" active, NLI often misclassifies
+                # complex biographical sentences. Check for life-confirmation
+                # keywords and correct a spurious REFUTES before scoring.
+                life_confirmed = any(kw in premise_lower for kw in [
+                    "survived", "is alive", "is currently", "is serving",
+                    "currently serving", "is the president", "47th president",
+                    "returned to", "is well", "is in good health",
+                ])
+
+                # Use keyword arg 'text_pair' so the tokenizer receives a proper pair
+                outputs = nli(premise, text_pair=norm_claim)
+                # outputs is a list-of-dicts or list-of-lists depending on top_k
+                items = outputs[0] if isinstance(outputs[0], list) else outputs
+                scores = {}
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    lbl = item.get("label", "").lower()
+                    sc = float(item.get("score", 0))
+                    if "entail" in lbl:
+                        scores["entailment"] = sc
+                    elif "contradict" in lbl:
+                        scores["contradiction"] = sc
+                    elif "neutral" in lbl:
+                        scores["neutral"] = sc
+
+                entail = scores.get("entailment", 0)
+                contra = scores.get("contradiction", 0)
+                neutral = scores.get("neutral", 0)
+
+                logger.debug(
+                    f"[STANCE/NLI] entail={entail:.3f} contra={contra:.3f} "
+                    f"neutral={neutral:.3f} | '{norm_claim[:50]}'"
+                )
+
+                # Only act on a confident result (≥ 0.60) to avoid false positives
+                best = max(entail, contra, neutral)
+                if best >= 0.60:
+                    if entail == best:
+                        logger.info(f"[STANCE/NLI] SUPPORTS ({entail:.3f})")
+                        return "SUPPORTS"
+                    if contra == best:
+                        # Sanity-check before trusting REFUTES.
+                        # The 68M NLI model frequently gives spurious REFUTES on:
+                        #   - Sentences that describe the claim's topic without negating it
+                        #     e.g. "Spherical Earth = approximation of sphere" vs "Earth is round"
+                        #   - Debunking articles ("Flat Earth is disproven") where the article
+                        #     SUPPORTS the claim by disproving the opposite
+                        #   - Sentences with survival/life-context words (assassination attempts)
+                        #
+                        # We only trust REFUTES when the premise EXPLICITLY negates
+                        # one of the claim's key terms ("not round", "no evidence that").
+                        premise_lower = premise.lower()
+                        claim_words = [
+                            w for w in norm_claim.lower().split()
+                            if len(w) > 3 and w not in {
+                                "this", "that", "with", "from", "have", "will",
+                                "been", "were", "they", "their", "some",
+                            }
+                        ]
+                        has_explicit_negation = any(
+                            f"not {w}" in premise_lower
+                            or f"no {w}" in premise_lower
+                            or f"isn't {w}" in premise_lower
+                            or f"aren't {w}" in premise_lower
+                            for w in claim_words
+                        )
+                        has_debunking_lang = any(w in premise_lower for w in [
+                            "disproven", "discredited", "pseudoscience",
+                            "misconception", "archaic", "conspiracy",
+                            "false belief", "myth", "unproven",
+                        ])
+                        if life_confirmed or has_debunking_lang or not has_explicit_negation:
+                            logger.info(
+                                f"[STANCE/NLI] REFUTES overridden → NEUTRAL "
+                                f"(life_confirmed={life_confirmed}, "
+                                f"debunking={has_debunking_lang}, "
+                                f"explicit_neg={has_explicit_negation})"
+                            )
+                            return "NEUTRAL"
+                        logger.info(f"[STANCE/NLI] REFUTES confirmed ({contra:.3f})")
+                        return "REFUTES"
+
+                # NLI uncertain → NEUTRAL (do NOT fall through to keyword heuristics)
+                logger.debug(f"[STANCE/NLI] Uncertain (best={best:.3f}) → NEUTRAL")
+                return "NEUTRAL"
+
+            except Exception as e:
+                logger.debug(f"[STANCE/NLI] NLI inference failed: {e}")
+
+        # ── Method 2: Conservative keyword heuristics (no NLI available) ─────
+        # Only trigger on strong, unambiguous misinformation-specific phrases.
+        # Generic negations like "is not" appear in every normal article and
+        # must NOT be used as refutation signals.
+        article_lower = article_text.lower()
+        strong_refute = [
+            "debunked", "debunks", "is a hoax", "is false", "is untrue",
+            "misinformation", "disinformation", "fabricated", "fact check: false",
+            "this claim is false", "no evidence that", "has been disproved",
+        ]
+        strong_support = [
+            "confirmed by", "verified by", "fact check: true",
+            "this claim is true", "evidence confirms", "is indeed alive",
+            "is currently", "is still alive",
+        ]
+
+        refute_hits = sum(1 for p in strong_refute if p in article_lower)
+        support_hits = sum(1 for p in strong_support if p in article_lower)
+
+        if refute_hits >= 1 and refute_hits > support_hits:
+            return "REFUTES"
+        if support_hits >= 1 and support_hits > refute_hits:
+            return "SUPPORTS"
+        return "NEUTRAL"
     
     def _compute_semantic_similarity(self, claim: str, article_text: str) -> float:
         """
-        Compute semantic similarity between claim and article.
-        IMPROVED: Better detection of related content even with different vocabulary.
-        
-        Args:
-            claim: Claim text
-            article_text: Article text
-            
-        Returns:
-            Similarity score (0.0 - 1.0)
+        Compute semantic similarity between claim and article text.
+
+        Uses sentence-transformers embeddings when available (cosine similarity),
+        with a keyword-overlap fallback.
         """
-        try:
-            logger.info(f"[SEM] Computing similarity for claim: {claim[:50]}, article_len: {len(article_text)}")
-            if not article_text or len(article_text.strip()) < 20:
-                logger.info("[SEM] Article too short, returning 0.0")
-                return 0.0
-            
-            # Method 1: Keyword overlap (fast baseline)
-            claim_words = set(claim.lower().split())
-            article_words = set(article_text.lower().split()[:200])  # First 200 words
-            
-            # Remove common stop words
-            stop_words = {
-                "the", "a", "an", "and", "or", "is", "are", "was", "were",
-                "be", "been", "being", "have", "has", "had", "do", "does", "did",
-                "will", "would", "could", "should", "may", "might", "must",
-                "of", "in", "on", "at", "by", "for", "with", "to", "from", "as"
-            }
-            
-            claim_words_filtered = claim_words - stop_words
-            article_words_filtered = article_words - stop_words
-            
-            if not claim_words_filtered or not article_words_filtered:
-                return 0.0
-            
-            # Compute Jaccard similarity
-            intersection = len(claim_words_filtered & article_words_filtered)
-            union = len(claim_words_filtered | article_words_filtered)
-            jaccard_sim = intersection / union if union > 0 else 0.0
-            
-            # Method 2: Named entity overlap (proper nouns are important)
-            # Capitalize-starting words in claim and article
-            try:
-                claim_entities = {w for w in claim.split() if w and w[0].isupper() and len(w) > 2}
-                article_entities = {w for w in article_text.split()[:200] if w and w[0].isupper() and len(w) > 2}
-            except Exception as e:
-                logger.debug(f"[SEM] Entity error: {e}, setting entities to empty")
-                claim_entities = set()
-                article_entities = set()
-            
-            entity_overlap = len(claim_entities & article_entities)
-            entity_similarity = entity_overlap / max(len(claim_entities), 1)
-            
-            # Method 3: Content-based relevance (key terms appear in article)
-            # Extract important words (non-stop, multi-char)
-            important_claim_words = [w for w in claim_words_filtered if len(w) > 3]
-            if important_claim_words:
-                matching_count = sum(1 for w in important_claim_words if w in article_words)
-                content_relevance = matching_count / len(important_claim_words)
-            else:
-                content_relevance = 0.5
-            
-            # Weighted combination:
-            # - If articles have entities matching claim, higher weight
-            # - Jaccard similarity is baseline
-            # - Content relevance is weighting factor
-            
-            if entity_overlap > 0:
-                # Articles about specific entities in claim get higher score
-                similarity = (jaccard_sim * 0.40) + (entity_similarity * 0.40) + (content_relevance * 0.20)
-                logger.info(f"[SEM] USE_ENTITY: J={jaccard_sim:.3f}*0.4 + E={entity_similarity:.3f}*0.4 + C={content_relevance:.3f}*0.2 = {similarity:.3f}")
-            else:
-                # Fallback: use Jaccard + content relevance
-                similarity = (jaccard_sim * 0.60) + (content_relevance * 0.40)
-                logger.info(f"[SEM] USE_JACCARD: J={jaccard_sim:.3f}*0.6 + C={content_relevance:.3f}*0.4 = {similarity:.3f}")
-            
-            # IMPORTANT FIX: Boost relevance if article addresses the claim's topic
-            # Articles that discuss the main entities are relevant even if they refute
-            article_text_lower = article_text.lower()
-            
-            # Check if article is about the same topic (contains main nouns)
-            topic_keywords = [w for w in claim_words_filtered if len(w) > 3]
-            
-            # If article contains 30%+ of claim's important keywords, it's topically related
-            before_boost = similarity
-            if topic_keywords:
-                topic_match_count = sum(1 for w in topic_keywords if w in article_text_lower)
-                topic_relevance = topic_match_count / len(topic_keywords)
-                similarity = max(similarity, topic_relevance * 0.7)  # Boost if topically related
-                if similarity > before_boost:
-                    logger.info(f"[SEM] TOPIC_BOOST: keywords={len(topic_keywords)} matched={topic_match_count} rel={topic_relevance:.3f} before={before_boost:.3f} after={similarity:.3f}")
-                else:
-                    logger.info(f"[SEM] NO_BOOST: topic_rel={topic_relevance:.3f} did not exceed {before_boost:.3f}")
-            
-            final_result = min(1.0, max(0.0, similarity))
-            logger.info(f"[SEM] FINAL_RESULT: {final_result:.3f}")
-            return final_result
-            
-        except Exception as e:
-            logger.info(f"[SEM] Exception in semantic similarity: {type(e).__name__}: {e}")
-            import traceback
-            logger.info(f"[SEM] Traceback: {traceback.format_exc()}")
+        if not article_text or len(article_text.strip()) < 20:
             return 0.0
+
+        # ── Method 1: Sentence-transformer cosine similarity ─────────────────
+        model = _get_semantic_model()
+        if model is not None:
+            try:
+                from sklearn.metrics.pairwise import cosine_similarity
+                claim_emb = model.encode(claim).reshape(1, -1)
+                text_emb = model.encode(article_text[:1000]).reshape(1, -1)
+                sim = float(cosine_similarity(claim_emb, text_emb)[0][0])
+                # Cosine similarity is in [-1, 1]; map to [0, 1]
+                sim = (sim + 1.0) / 2.0
+                logger.debug(f"[SEM] Embedding similarity: {sim:.3f}")
+                return float(max(0.0, min(1.0, sim)))
+            except Exception as e:
+                logger.debug(f"[SEM] Embedding similarity failed: {e}")
+
+        # ── Method 2: Keyword + entity overlap (fast fallback) ───────────────
+        stop_words = {
+            "the", "a", "an", "and", "or", "is", "are", "was", "were",
+            "be", "been", "have", "has", "had", "do", "does", "did",
+            "will", "would", "could", "should", "of", "in", "on", "at",
+            "by", "for", "with", "to", "from", "as", "it", "its",
+        }
+        claim_words = {w for w in claim.lower().split() if w not in stop_words and len(w) > 2}
+        article_words = {w for w in article_text.lower().split()[:300] if w not in stop_words and len(w) > 2}
+
+        if not claim_words or not article_words:
+            return 0.0
+
+        intersection = len(claim_words & article_words)
+        union = len(claim_words | article_words)
+        jaccard = intersection / union if union > 0 else 0.0
+
+        # Boost for keyword coverage (fraction of claim words found in article)
+        coverage = intersection / len(claim_words) if claim_words else 0.0
+        similarity = (jaccard * 0.5) + (coverage * 0.5)
+
+        logger.debug(f"[SEM] Keyword similarity: {similarity:.3f} (jaccard={jaccard:.3f}, coverage={coverage:.3f})")
+        return float(max(0.0, min(1.0, similarity)))
     
     def deduplicate_evidence(self, evidence_list: List[Dict]) -> List[Dict]:
         """

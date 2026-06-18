@@ -15,6 +15,43 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # ============================================================================
+# CLAIM RESULT CACHE  (TTL = 10 minutes)
+# Avoids re-analyzing identical claims, saving time and API calls.
+# ============================================================================
+import time as _time
+import hashlib as _hashlib
+
+_CACHE_TTL_SECONDS = 600  # 10 minutes
+
+class _ClaimCache:
+    """Thread-safe, TTL-based in-memory cache for analysis results."""
+
+    def __init__(self):
+        self._store: dict = {}
+
+    def _key(self, claim: str) -> str:
+        return _hashlib.md5(claim.strip().lower().encode()).hexdigest()
+
+    def get(self, claim: str):
+        k = self._key(claim)
+        entry = self._store.get(k)
+        if entry and (_time.time() - entry["ts"]) < _CACHE_TTL_SECONDS:
+            return entry["result"]
+        if entry:
+            del self._store[k]  # expired
+        return None
+
+    def set(self, claim: str, result) -> None:
+        k = self._key(claim)
+        self._store[k] = {"result": result, "ts": _time.time()}
+
+    def size(self) -> int:
+        return len(self._store)
+
+
+_cache = _ClaimCache()
+
+# ============================================================================
 # GLOBAL SERVICE INSTANCES (Initialized once on first request)
 # ============================================================================
 _services_initialized = False
@@ -155,22 +192,32 @@ async def analyze_endpoint(
         if not text or not text.strip():
             logger.warning("[ENDPOINT] ❌ Empty claim provided")
             return _fallback_response("empty", "No claim text provided")
-        
+
         claim = text.strip()
-        
+
+        # ── Cache lookup ──────────────────────────────────────────────────────
+        cached = _cache.get(claim)
+        if cached is not None:
+            logger.info(f"[ENDPOINT] ⚡ Cache hit for claim (cache size: {_cache.size()})")
+            return cached
+
         # Initialize services
         services_ready = _initialize_services()
         if not services_ready or not _scoring_engine:
             logger.error("[ENDPOINT] ❌ Services not initialized")
             return _error_response(claim, "Analysis services not available")
-        
+
         # ✅ EXECUTE REAL PIPELINE
         logger.info("[ENDPOINT] ✅ EXECUTING REAL PIPELINE")
         response = await analyze_claim(claim, session_id)
         
         # Ensure all response fields populated
         response = _guarantee_response_populated(response)
-        
+
+        # Store in cache (only cache definitive results, not errors)
+        if response.verdict not in ("ERROR",):
+            _cache.set(claim, response)
+
         logger.info(f"[ENDPOINT] ✅ Analysis complete: {response.verdict}")
         logger.info(f"[ENDPOINT] Confidence: {response.confidence:.0%}")
         logger.info(f"[ENDPOINT] Sources: {len(response.sources)}")
@@ -403,51 +450,93 @@ def _error_response(claim: str, error: str) -> AnalyzeResponse:
 
 def _compute_nlp_score(claim: str) -> float:
     """
-    Compute NLP credibility score using linguistic analysis.
-    
-    Args:
-        claim: The claim text
-        
+    Compute NLP credibility score using semantic similarity.
+
+    Strategy (in priority order):
+    1. Use the retrieval engine's already-loaded SentenceTransformer to measure
+       how similar the claim is to known-credible vs known-misinformation anchors.
+    2. Fall back to lightweight linguistic heuristics if the model is unavailable.
+
     Returns:
-        Credibility score (0.0 - 1.0)
+        Credibility score in [0.0, 1.0] — higher = more credible/true-sounding.
     """
     try:
-        logger.debug(f"[NLP] Analyzing: {claim[:80]}")
-        
-        # Look for linguistic indicators
-        suspicious_words = [
-            "allegedly", "rumor", "supposedly", "claim",
-            "fake", "hoax", "conspiracy", "unverified",
-            "leaked", "exclusive", "shocking"
-        ]
-        
-        confident_words = [
-            "research shows", "study found", "evidence",
-            "confirmed", "verified", "proved", "documented",
-            "peer-reviewed", "published", "official"
-        ]
-        
-        claim_lower = claim.lower()
-        
-        # Count linguistic signals
-        suspicious_count = sum(1 for word in suspicious_words if word in claim_lower)
-        confident_count = sum(1 for word in confident_words if word in claim_lower)
-        
-        # Compute base score
-        base_score = 0.5
-        
-        # Adjust for suspicious language
-        base_score -= suspicious_count * 0.15
-        
-        # Adjust for confident language
-        base_score += confident_count * 0.10
-        
-        # Clamp to valid range
-        nlp_score = max(0.0, min(1.0, base_score))
-        
-        logger.info(f"[NLP] Score computed: {nlp_score:.2f} (suspicious:{suspicious_count}, confident:{confident_count})")
-        return nlp_score
-        
+        # Normalise ALL-CAPS claims before embedding (degrades model quality)
+        if claim == claim.upper() and len(claim) > 3:
+            claim = claim.capitalize()
+
+        # --- Approach 1: Semantic similarity via SentenceTransformer ---
+        semantic_model = getattr(_retrieval_engine, "semantic_model", None)
+        if semantic_model is not None:
+            from sklearn.metrics.pairwise import cosine_similarity as cos_sim
+            import numpy as np
+
+            # Anchor sentences representative of credible vs misinformation text
+            credible_anchors = [
+                "Research has confirmed this finding through peer-reviewed studies.",
+                "Official data from government and scientific agencies supports this.",
+                "Multiple independent sources have verified this information.",
+                "This has been documented by reputable scientific journals.",
+            ]
+            misinfo_anchors = [
+                "This shocking secret that the mainstream media is hiding.",
+                "Conspiracy theories suggest that this is a hoax.",
+                "Unverified rumor spreading on social media claims this.",
+                "Leaked documents allegedly show this controversial claim.",
+            ]
+
+            claim_emb = semantic_model.encode(claim).reshape(1, -1)
+            cred_embs = semantic_model.encode(credible_anchors)
+            mis_embs = semantic_model.encode(misinfo_anchors)
+
+            cred_score = float(np.mean(cos_sim(claim_emb, cred_embs)))
+            mis_score = float(np.mean(cos_sim(claim_emb, mis_embs)))
+
+            # Normalise to [0, 1]: higher = more credible
+            total = cred_score + mis_score
+            semantic_credibility = cred_score / total if total > 0 else 0.5
+
+            logger.info(
+                f"[NLP] Semantic score: {semantic_credibility:.3f} "
+                f"(cred={cred_score:.3f}, mis={mis_score:.3f})"
+            )
+            return float(np.clip(semantic_credibility, 0.05, 0.95))
+
     except Exception as e:
-        logger.warning(f"[NLP] Error computing score: {e}")
-        return 0.5
+        logger.warning(f"[NLP] Semantic scoring failed, using heuristics: {e}")
+
+    # --- Approach 2: Lightweight linguistic heuristics ---
+    claim_lower = claim.lower()
+
+    # Strong misinformation signals (weighted)
+    misinfo_signals = {
+        "they don't want you to know": 0.30,
+        "mainstream media won't report": 0.25,
+        "big pharma": 0.20,
+        "deep state": 0.20,
+        "wake up sheeple": 0.25,
+        "conspiracy": 0.15,
+        "hoax": 0.20,
+        "plandemic": 0.25,
+        "fake news": 0.15,
+        "cover-up": 0.15,
+        "shocking": 0.05,
+        "allegedly": 0.05,
+        "rumor": 0.10,
+    }
+    credibility_signals = {
+        "peer-reviewed": 0.15,
+        "published in": 0.10,
+        "according to researchers": 0.10,
+        "study found": 0.10,
+        "official statement": 0.10,
+        "data shows": 0.08,
+        "confirmed by": 0.08,
+    }
+
+    penalty = sum(w for phrase, w in misinfo_signals.items() if phrase in claim_lower)
+    bonus = sum(w for phrase, w in credibility_signals.items() if phrase in claim_lower)
+
+    score = max(0.05, min(0.95, 0.5 - penalty + bonus))
+    logger.info(f"[NLP] Heuristic score: {score:.2f} (penalty={penalty:.2f}, bonus={bonus:.2f})")
+    return score

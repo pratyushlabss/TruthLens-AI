@@ -1,8 +1,11 @@
 """
 Web Retrieval Engine - HYBRID SEARCH IMPLEMENTATION
-Primary: Tavily API
-Fallback: DuckDuckGo HTML scraping
-Content Extraction: newspaper3k + BeautifulSoup + requests
+Priority order:
+  1. Wikipedia REST API  (free, always available, highly credible)
+  2. Tavily API          (optional paid search, highest quality)
+  3. DuckDuckGo via ddgs library (free, no scraping, reliable)
+  4. DuckDuckGo HTML scraping fallback
+  5. Hardcoded fallback article
 NEVER returns empty list - always has fallback evidence
 """
 
@@ -14,6 +17,10 @@ import requests
 from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
+
+# Wikipedia REST API base URL (free, no key needed)
+_WIKI_API = "https://en.wikipedia.org/w/api.php"
+_WIKI_HEADERS = {"User-Agent": "TruthLens/1.0 (factcheck-tool; research@truthlens.ai)"}
 
 
 class RetrievalEngine:
@@ -67,47 +74,178 @@ class RetrievalEngine:
         timeout: int = 30
     ) -> List[Dict]:
         """
-        Search for evidence and scrape content.
-        
-        Hybrid search strategy:
-        1. Try Tavily API (if configured)
-        2. Fallback to DuckDuckGo HTML scraping
-        3. Return hardcoded fallback if both fail
-        
-        Args:
-            claim: The claim to search for
-            max_results: Maximum number of results
-            timeout: Timeout in seconds
-            
+        Search for evidence using priority-ordered sources.
+
+        Priority:
+        1. Wikipedia REST API (free, always available, highly credible)
+        2. Tavily API (optional, highest quality)
+        3. DuckDuckGo via ddgs library (free, no scraping)
+        4. DuckDuckGo HTML scraping (last resort before hardcoded fallback)
+        5. Hardcoded fallback article
+
         Returns:
             List of articles (guaranteed non-empty)
         """
         logger.info(f"[RETRIEVAL] 🔍 Search request: {claim[:80]}")
-        
-        # Try Tavily API first (if configured)
-        if self.tavily_api_key:
-            logger.info("[RETRIEVAL] 🎯 Attempting Tavily API search...")
-            results = self._search_with_tavily(claim, max_results)
-            if results:
-                logger.info(f"[RETRIEVAL] ✅ Tavily: Retrieved {len(results)} articles")
-                return results[:max_results]
-            logger.warning("[RETRIEVAL] ⚠️  Tavily search failed or no results")
-        
-        # Fallback to DuckDuckGo
-        logger.info("[RETRIEVAL] 🔄 Attempting DuckDuckGo fallback search...")
-        results = self._search_with_duckduckgo(claim, max_results)
-        if results:
-            logger.info(f"[RETRIEVAL] ✅ DuckDuckGo: Retrieved {len(results)} articles")
-            return results[:max_results]
-        
-        logger.warning("[RETRIEVAL] ⚠️  DuckDuckGo search failed")
-        
-        # Final fallback: Return hardcoded evidence
+        combined: List[Dict] = []
+
+        # --- Source 1: Wikipedia (always attempted, free) ---
+        wiki_results = self._search_with_wikipedia(claim, max_results=5)
+        if wiki_results:
+            logger.info(f"[RETRIEVAL] ✅ Wikipedia: {len(wiki_results)} articles")
+            combined.extend(wiki_results)
+
+        # --- Source 2: Tavily API (if configured) ---
+        if self.tavily_api_key and len(combined) < max_results:
+            tavily_results = self._search_with_tavily(claim, max_results - len(combined))
+            if tavily_results:
+                logger.info(f"[RETRIEVAL] ✅ Tavily: {len(tavily_results)} articles")
+                combined.extend(tavily_results)
+
+        # --- Source 3: DuckDuckGo via ddgs library ---
+        if len(combined) < 3:
+            ddgs_results = self._search_with_ddgs(claim, max_results=5)
+            if ddgs_results:
+                logger.info(f"[RETRIEVAL] ✅ DDGs: {len(ddgs_results)} articles")
+                combined.extend(ddgs_results)
+
+        # --- Source 4: DuckDuckGo HTML scraping ---
+        if len(combined) < 2:
+            logger.info("[RETRIEVAL] 🔄 Attempting DuckDuckGo HTML scraping...")
+            html_results = self._search_with_duckduckgo(claim, max_results=5)
+            if html_results:
+                logger.info(f"[RETRIEVAL] ✅ DuckDuckGo HTML: {len(html_results)} articles")
+                combined.extend(html_results)
+
+        if combined:
+            combined = self._detect_duplicates(combined)
+            combined = self._rank_and_filter_results(combined, claim)
+            logger.info(f"[RETRIEVAL] ✅ Total after dedup+rank: {len(combined)} articles")
+            return combined[:max_results]
+
+        # --- Final fallback ---
         logger.info("[RETRIEVAL] 🛡️  FINAL FALLBACK: Returning hardcoded evidence")
         return [self._fallback_article(claim)]
     
     # ========================================================================
-    # TAVILY API SEARCH (Primary)
+    # WIKIPEDIA REST API (Free, highest credibility)
+    # ========================================================================
+
+    def _search_with_wikipedia(self, claim: str, max_results: int = 5) -> List[Dict]:
+        """Search Wikipedia and return article summaries.
+
+        Uses the free Wikipedia REST API — no key required.
+        Results get credibility 0.92 (Wikipedia is highly curated).
+        """
+        try:
+            # Step 1: search for relevant article titles
+            search_resp = requests.get(
+                _WIKI_API,
+                params={
+                    "action": "query",
+                    "list": "search",
+                    "srsearch": claim,
+                    "format": "json",
+                    "srlimit": max_results,
+                    "srprop": "snippet",
+                },
+                headers=_WIKI_HEADERS,
+                timeout=8,
+            )
+            search_resp.raise_for_status()
+            search_data = search_resp.json()
+            hits = search_data.get("query", {}).get("search", [])
+
+            if not hits:
+                logger.debug("[WIKIPEDIA] No search results")
+                return []
+
+            results: List[Dict] = []
+            for hit in hits[:max_results]:
+                page_title = hit.get("title", "")
+                if not page_title:
+                    continue
+                try:
+                    # Step 2: fetch the page summary (REST v1 — fast, free)
+                    summary_url = (
+                        f"https://en.wikipedia.org/api/rest_v1/page/summary/"
+                        f"{requests.utils.quote(page_title, safe='')}"
+                    )
+                    sum_resp = requests.get(
+                        summary_url, headers=_WIKI_HEADERS, timeout=6
+                    )
+                    if not sum_resp.ok:
+                        continue
+                    sd = sum_resp.json()
+                    extract = sd.get("extract", "")
+                    page_url = sd.get("content_urls", {}).get("desktop", {}).get("page", "")
+                    if not extract:
+                        continue
+
+                    results.append({
+                        "title": page_title,
+                        "url": page_url or f"https://en.wikipedia.org/wiki/{requests.utils.quote(page_title)}",
+                        "snippet": extract[:300],
+                        "text": extract,
+                        "source": "wikipedia.org",
+                        "credibility": 0.92,
+                        "is_fallback": False,
+                        "retrieved_at": datetime.now().isoformat(),
+                    })
+                except Exception as page_err:
+                    logger.debug(f"[WIKIPEDIA] Page fetch error for '{page_title}': {page_err}")
+                    continue
+
+            logger.info(f"[WIKIPEDIA] ✅ Retrieved {len(results)} articles")
+            return results
+
+        except Exception as e:
+            logger.warning(f"[WIKIPEDIA] ❌ Error: {e}")
+            return []
+
+    # ========================================================================
+    # DUCKDUCKGO via ddgs library (free, no scraping)
+    # ========================================================================
+
+    def _search_with_ddgs(self, claim: str, max_results: int = 5) -> List[Dict]:
+        """Search DuckDuckGo using the ddgs library (no HTML scraping)."""
+        try:
+            from ddgs import DDGS
+        except ImportError:
+            try:
+                from duckduckgo_search import DDGS
+            except ImportError:
+                logger.debug("[DDGS] ddgs library not installed; skipping")
+                return []
+
+        try:
+            results: List[Dict] = []
+            with DDGS() as ddgs:
+                for hit in ddgs.text(claim, max_results=max_results):
+                    url = hit.get("href", "")
+                    snippet = hit.get("body", "")
+                    title = hit.get("title", "")
+                    source = self._extract_domain(url)
+                    credibility = self._assess_source_credibility(url)
+                    content = self._scrape_url(url) if url else snippet
+                    results.append({
+                        "title": title,
+                        "url": url,
+                        "snippet": snippet[:300],
+                        "text": content or snippet,
+                        "source": source,
+                        "credibility": credibility,
+                        "is_fallback": False,
+                        "retrieved_at": datetime.now().isoformat(),
+                    })
+            logger.info(f"[DDGS] ✅ Retrieved {len(results)} results")
+            return results
+        except Exception as e:
+            logger.warning(f"[DDGS] ❌ Error: {e}")
+            return []
+
+    # ========================================================================
+    # TAVILY API SEARCH (Optional paid upgrade)
     # ========================================================================
     
     def _search_with_tavily(self, claim: str, max_results: int) -> List[Dict]:
